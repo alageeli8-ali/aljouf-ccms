@@ -1,0 +1,15 @@
+bin/
+obj/
+node_modules/
+dist/
+*.user
+.vs/
+.idea/
+.env
+.env.local
+appsettings.Local.json
+/storage/
+src/backend/Ccms.Host/wwwroot/app/
+src/backend/Ccms.Host/wwwroot/swagger/
+TestResults/
+*.log

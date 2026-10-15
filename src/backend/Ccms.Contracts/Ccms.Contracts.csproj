@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>العقود العامة بين الوحدات (ADR-008): الواجهات والأنواع المشتركة فقط، بلا منطق.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ccms.BuildingBlocks/Ccms.BuildingBlocks.csproj" />
+  </ItemGroup>
+</Project>

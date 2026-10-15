@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>موصل PostgreSQL مصغّر للتطوير والاختبار دون اتصال (ADR-015). لا يُستخدم في الإنتاج.</Description>
+  </PropertyGroup>
+</Project>

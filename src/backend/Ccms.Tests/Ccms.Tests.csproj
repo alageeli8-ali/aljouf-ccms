@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- مشغّل اختبارات تكامل طرف لطرف: يشغّل التطبيق الحقيقي كعملية مستقلة على قاعدة PostgreSQL حقيقية.
+       (xUnit غير متاح دون NuGet في بيئة البناء الحالية — ADR-015؛ الاختبارات مكتوبة بحيث تنتقل إليه مباشرة) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS8602;CS8604</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Ccms.Host/Ccms.Host.csproj" />
+    <ProjectReference Include="../Ccms.Data.PgWire/Ccms.Data.PgWire.csproj" Condition="'$(UseNpgsql)' != 'true'" />
+  </ItemGroup>
+</Project>

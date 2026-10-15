@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- UseNpgsql=true يربط مشغّل Npgsql الرسمي (يتطلب الوصول إلى NuGet). الافتراضي false يستخدم الموصل الداخلي المصغّر للتطوير والاختبار دون اتصال -->
+    <UseNpgsql Condition="'$(UseNpgsql)' == ''">false</UseNpgsql>
+    <DefineConstants Condition="'$(UseNpgsql)' == 'true'">$(DefineConstants);USE_NPGSQL</DefineConstants>
+  </PropertyGroup>
+</Project>

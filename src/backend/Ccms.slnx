@@ -1,0 +1,24 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="Ccms.BuildingBlocks/Ccms.BuildingBlocks.csproj" />
+    <Project Path="Ccms.Contracts/Ccms.Contracts.csproj" />
+    <Project Path="Ccms.Data.PgWire/Ccms.Data.PgWire.csproj" />
+    <Project Path="Ccms.Host/Ccms.Host.csproj" />
+    <Project Path="Ccms.Modules.Audit/Ccms.Modules.Audit.csproj" />
+    <Project Path="Ccms.Modules.Bodies/Ccms.Modules.Bodies.csproj" />
+    <Project Path="Ccms.Modules.Configuration/Ccms.Modules.Configuration.csproj" />
+    <Project Path="Ccms.Modules.Documents/Ccms.Modules.Documents.csproj" />
+    <Project Path="Ccms.Modules.Iam/Ccms.Modules.Iam.csproj" />
+    <Project Path="Ccms.Modules.Integrations/Ccms.Modules.Integrations.csproj" />
+    <Project Path="Ccms.Modules.Meetings/Ccms.Modules.Meetings.csproj" />
+    <Project Path="Ccms.Modules.Minutes/Ccms.Modules.Minutes.csproj" />
+    <Project Path="Ccms.Modules.Notifications/Ccms.Modules.Notifications.csproj" />
+    <Project Path="Ccms.Modules.Org/Ccms.Modules.Org.csproj" />
+    <Project Path="Ccms.Modules.Reporting/Ccms.Modules.Reporting.csproj" />
+    <Project Path="Ccms.Modules.Resolutions/Ccms.Modules.Resolutions.csproj" />
+    <Project Path="Ccms.Modules.Tasks/Ccms.Modules.Tasks.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="Ccms.Tests/Ccms.Tests.csproj" />
+  </Folder>
+</Solution>
