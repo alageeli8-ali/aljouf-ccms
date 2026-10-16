@@ -2,4 +2,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Pdf/Fonts/*.ttf" LogicalName="Ccms.Pdf.Fonts.%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

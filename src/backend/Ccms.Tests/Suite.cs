@@ -61,6 +61,15 @@ public sealed class Suite(TestContext ctx)
         await Check.Status(await gov.PostAsync($"/api/v1/bodies/{_bodyA}/activate"), 200, "تفعيل A");
         _bodyB = (await Check.Status(await gov.PostAsync("/api/v1/bodies", new { code = "QA-OTHER", bodyType = "executive_council", nameAr = "مجلس آخر", nameEn = "Other Council" }), 201, "جهة B")).G("id");
 
+        // سياسة الجهة A: المحضر يمر بتوقيع كل الأعضاء ثم الاعتماد (تختبر أثر تعطيل التوقيع في CFG-05)
+        await Check.Status(await gov.PutAsync($"/api/v1/bodies/{_bodyA}/policy", new
+        {
+            effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3)), quorumType = "majority", chairRequired = false, countRemote = true, allowOverride = false,
+            votingThreshold = "majority_of_votes_cast", abstentions = "excluded", tieBreaker = "chair_casting_vote", secretAllowed = false, signoffRequired = true,
+            minutesReviewDays = 3, extensionApprover = "secretary", allowProxy = false, maxProxiesPerMember = 1, allowRemoteAttendance = true, allowCirculation = false,
+            reason = "سياسة اختبار المرحلة 1", minutesChairReview = false, minutesMemberReview = false, minutesSignatures = "all_members",
+        }), 200, "سياسة A");
+
         var sec = await As("secretary");
         var m = await Check.Status(await sec.PostAsync("/api/v1/meetings", new { bodyId = _bodyA, titleAr = "اجتماع الاختبار", startsAt = DateTime.UtcNow.AddDays(3), location = "قاعة الاختبار" }), 201, "اجتماع");
         _meetingA = m.G("id");
@@ -368,8 +377,17 @@ public sealed class Suite(TestContext ctx)
         await Check.Status(await Admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_PROVIDER", new { value = "sandbox", reason = "مزود الاختبار" }), 200, "المزود");
         using var sec = await As("secretary");
         await Check.Status(await sec.PutAsync($"/api/v1/minutes/{_minutesA}/draft", new { sections = new[] { new { key = "opening", title = "الافتتاح", body = "افتتح الرئيس الاجتماع" } } }), 200, "المسودة");
-        var req = await Check.Status(await sec.PostAsync($"/api/v1/minutes/{_minutesA}/request-signoffs"), 200, "طلب الإقرار");
-        Check.Equal("pending_signoffs", req.S("status"), "المحضر ينتظر الإقرارات");
+        // عقد الاجتماع ثم رفع محضره: سياسة الجهة تقتضي توقيع الأعضاء
+        await Check.Status(await sec.PostAsync($"/api/v1/meetings/{_meetingA}/agenda-items", new { titleAr = "بند الاختبار" }), 201, "بند");
+        await Check.Status(await sec.PostAsync($"/api/v1/meetings/{_meetingA}/invitations/send"), 200, "الدعوات");
+        await Check.Status(await sec.PutAsync($"/api/v1/meetings/{_meetingA}/attendance", new
+        {
+            records = new[] { new { userId = _users["chair"], status = "present", mode = "in_person" }, new { userId = _users["member"], status = "present", mode = "in_person" } },
+        }), 200, "الحضور");
+        await Check.Status(await sec.PostAsync($"/api/v1/meetings/{_meetingA}/open", new { }), 200, "الافتتاح");
+        await Check.Status(await sec.PostAsync($"/api/v1/meetings/{_meetingA}/close"), 200, "الإغلاق");
+        var req = await Check.Status(await sec.PostAsync($"/api/v1/minutes/{_minutesA}/submit", new { }), 200, "رفع المحضر");
+        Check.Equal("pending_signatures", req.S("status"), "المحضر ينتظر التوقيعات");
 
         var impact = await Admin.GetJsonAsync("/api/v1/admin/features/E_SIGNATURE_ENABLED/impact?value=false");
         Check.That(impact["requiresConfirmation"]!.GetValue<bool>(), "الأثر يتطلب تأكيدًا");

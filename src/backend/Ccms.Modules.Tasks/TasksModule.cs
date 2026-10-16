@@ -15,13 +15,16 @@ public sealed class TasksModule : IModule
     public string Code => "TSK";
 
     public void AddServices(IServiceCollection services, IConfiguration configuration)
-        => services.AddScoped<ITaskRelationQuery, TaskRelationQuery>();
+    {
+        services.AddScoped<ITaskRelationQuery, TaskRelationQuery>();
+        services.AddScoped<ITaskActivator, TaskActivator>();
+    }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
     {
         var g = api.MapGroup("/tasks").WithTags("Tasks");
         g.MapGet("/", List);
-        g.MapPost("/", Create).Validate<CreateTaskRequest>();
+        g.MapPost("/", Create).Validate<CreateTaskRequest>().Idempotent();
         g.MapGet("/{id:guid}", Get);
         g.MapPost("/{id:guid}/updates", AddUpdate).Validate<TaskUpdateRequest>();
         api.MapGet("/my/tasks", My).WithTags("Tasks");
@@ -158,8 +161,20 @@ public sealed class TasksModule : IModule
         {
             var code = await tx.ScalarAsync<string>("SELECT code FROM bodies.bodies WHERE id = @bodyId AND status = 'active'", new { bodyId }, ct)
                 ?? throw new ConflictException("body-not-active", "الجهة غير نشطة");
-            if (req.ResolutionId is { } rid && await tx.ScalarAsync<Guid?>("SELECT body_id FROM resolutions.resolutions WHERE id = @rid", new { rid }, ct) != bodyId)
-                throw AppValidationException.For("resolutionId", "القرار لا يتبع هذه الجهة");
+            // مهمة ناتجة عن قرار مقترح في مسودة المحضر تبقى مسودة بلا رقم ولا إشعار حتى يُعتمد المحضر ويصدر القرار (08 §2.4)
+            var draft = false;
+            Guid? meetingId = null, agendaItemId = null;
+            if (req.ResolutionId is { } rid)
+            {
+                var res = await tx.QuerySingleAsync("SELECT body_id, status, meeting_id, agenda_item_id FROM resolutions.resolutions WHERE id = @rid", new { rid },
+                    r => (Body: r.GetGuid(0), Status: r.GetString(1), Meeting: r.Uuid("meeting_id"), Item: r.Uuid("agenda_item_id")), ct);
+                if (res == default || res.Body != bodyId) throw AppValidationException.For("resolutionId", "القرار لا يتبع هذه الجهة");
+                if (res.Status is not ("proposed" or "issued" or "in_execution" or "referred"))
+                    throw new ConflictException("invalid-transition", "لا تُسند مهام لقرار غير صادر أو منتهٍ");
+                draft = res.Status == "proposed";
+                meetingId = res.Meeting;
+                agendaItemId = res.Item;
+            }
             // المسؤول المتابع: إلزامي لغير الموظف؛ افتراضيًا مدير الإدارة أو المتابع المعيّن للجهة الخارجية (BRL-09)
             var accountable = req.AccountableUserId ?? req.AssigneeType switch
             {
@@ -169,30 +184,39 @@ public sealed class TasksModule : IModule
             };
             if (req.AssigneeType != "user" && accountable is null)
                 throw AppValidationException.For("accountableUserId", "المسؤول المتابع الداخلي إلزامي للمهام المسندة لإدارة أو جهة خارجية");
-            var year = clock.TodayLocal.Year;
-            var seq = await numbering.NextAsync(tx, $"task:{code}", year, ct);
-            var refNo = $"{code}-T-{year}-{seq:0000}";
+            string? refNo = null;
+            if (!draft)
+            {
+                var year = clock.TodayLocal.Year;
+                var seq = await numbering.NextAsync(tx, $"task:{code}", year, ct);
+                refNo = $"{code}-T-{year}-{seq:0000}";
+            }
             await tx.ExecuteAsync("""
-                INSERT INTO tasks.tasks (id, body_id, resolution_id, reference_no, title_ar, description, assignee_type, assignee_user_id, assignee_org_unit_id,
+                INSERT INTO tasks.tasks (id, body_id, resolution_id, meeting_id, agenda_item_id, reference_no, title_ar, description, assignee_type, assignee_user_id, assignee_org_unit_id,
                   assignee_external_entity_id, accountable_user_id, verifier_user_id, verification_required, priority, original_due_date, due_date, status, created_by)
-                VALUES (@id, @bodyId, @ResolutionId, @refNo, @TitleAr, @Description, @AssigneeType,
+                VALUES (@id, @bodyId, @ResolutionId, @meetingId, @agendaItemId, @refNo, @TitleAr, @Description, @AssigneeType,
                   CASE WHEN @AssigneeType = 'user' THEN @AssigneeUserId::uuid END,
                   CASE WHEN @AssigneeType = 'org_unit' THEN @AssigneeOrgUnitId::uuid END,
                   CASE WHEN @AssigneeType = 'external_entity' THEN @AssigneeExternalEntityId::uuid END,
-                  @accountable, @VerifierUserId, @verify, @priority, @DueDate, @DueDate, 'assigned', @by)
+                  @accountable, @VerifierUserId, @verify, @priority, @DueDate, @DueDate, @status, @by)
                 """, new
             {
-                id, bodyId, req.ResolutionId, refNo, req.TitleAr, req.Description, req.AssigneeType, req.AssigneeUserId, req.AssigneeOrgUnitId,
+                id, bodyId, req.ResolutionId, meetingId, agendaItemId, refNo, status = draft ? "draft" : "assigned", req.TitleAr, req.Description, req.AssigneeType, req.AssigneeUserId, req.AssigneeOrgUnitId,
                 req.AssigneeExternalEntityId, accountable, req.VerifierUserId, verify = req.VerificationRequired ?? true,
                 priority = req.Priority ?? "normal", req.DueDate, by = me.UserId,
             }, ct);
+            if (draft)
+            {
+                await audit.WriteAsync(tx, new AuditEntry("TSK", "task.drafted", "task", id.ToString(), After: new { req.ResolutionId, req.AssigneeType, accountable, req.DueDate }), ct);
+                return (string?)null;
+            }
             foreach (var uid in new[] { req.AssigneeType == "user" ? req.AssigneeUserId : null, accountable }.OfType<Guid>().Distinct())
                 await notifier.NotifyAsync(tx, new NotificationRequest(uid, "task_assigned", $"أُسندت إليك مهمة: {req.TitleAr} ({refNo})",
                     $"Task assigned: {refNo}", $"/tasks/{id}", $"task_assigned:{id}:{uid}"), ct);
             await audit.WriteAsync(tx, new AuditEntry("TSK", "task.assigned", "task", id.ToString(), After: new { refNo, req.AssigneeType, accountable, req.DueDate }), ct);
             return refNo;
         }, ct);
-        return Results.Created($"/api/v1/tasks/{id}", new { id, referenceNo = created });
+        return Results.Created($"/api/v1/tasks/{id}", new { id, referenceNo = created, status = created is null ? "draft" : "assigned" });
     }
 
     private static async Task<IResult> Get(Guid id, Db db, IAccessService access, CancellationToken ct)
@@ -236,4 +260,39 @@ internal sealed class TaskRelationQuery(Db db) : ITaskRelationQuery
             FROM tasks.tasks t LEFT JOIN org.org_units o ON o.id = t.assignee_org_unit_id WHERE t.id = @taskId
             """, new { taskId }, r => new TaskRelation(r.GetGuid(0), r.GetGuid(1), r.Uuid("assignee_user_id"), r.Uuid("accountable_user_id"),
             r.Uuid("manager_user_id"), r.Uuid("assignee_external_entity_id")), ct);
+}
+
+/// <summary>عند اعتماد المحضر: تُرقّم المهام المسودة لقراراته الصادرة وتُسند ويُشعر المكلفون؛ ومسودات القرارات غير الصادرة تُلغى بسببها.</summary>
+internal sealed class TaskActivator(INumberingService numbering, IClock clock, INotifier notifier, IAuditWriter audit) : ITaskActivator
+{
+    public async Task<int> ActivateAsync(ISql tx, IReadOnlyList<Guid> issuedResolutions, IReadOnlyList<Guid> notIssuedResolutions, Guid by, CancellationToken ct = default)
+    {
+        var drafts = await tx.QueryAsync("""
+            SELECT t.id, t.title_ar, t.assignee_type, t.assignee_user_id, t.accountable_user_id, b.code
+            FROM tasks.tasks t JOIN bodies.bodies b ON b.id = t.body_id
+            WHERE t.status = 'draft' AND t.resolution_id = ANY(@ids::uuid[]) ORDER BY t.created_at FOR UPDATE OF t
+            """, new { ids = issuedResolutions.ToArray() }, r => (Id: r.GetGuid(0), Title: r.GetString(1), Type: r.GetString(2), User: r.Uuid("assignee_user_id"),
+            Accountable: r.Uuid("accountable_user_id"), Code: r.GetString(5)), ct);
+        foreach (var t in drafts)
+        {
+            var year = clock.TodayLocal.Year;
+            var seq = await numbering.NextAsync(tx, $"task:{t.Code}", year, ct);
+            var refNo = $"{t.Code}-T-{year}-{seq:0000}";
+            await tx.ExecuteAsync("UPDATE tasks.tasks SET status = 'assigned', reference_no = @refNo WHERE id = @id", new { id = t.Id, refNo }, ct);
+            await tx.ExecuteAsync("""
+                INSERT INTO tasks.task_updates (id, task_id, author_user_id, update_type, note, old_value, new_value)
+                VALUES (@uid, @id, @by, 'status_change', 'إسناد آلي عند اعتماد المحضر', '{"status":"draft"}'::jsonb, '{"status":"assigned"}'::jsonb)
+                """, new { uid = Guid.CreateVersion7(), id = t.Id, by }, ct);
+            foreach (var uid in new[] { t.Type == "user" ? t.User : null, t.Accountable }.OfType<Guid>().Distinct())
+                await notifier.NotifyAsync(tx, new NotificationRequest(uid, "task_assigned", $"أُسندت إليك مهمة: {t.Title} ({refNo})",
+                    $"Task assigned: {refNo}", $"/tasks/{t.Id}", $"task_assigned:{t.Id}:{uid}"), ct);
+            await audit.WriteAsync(tx, new AuditEntry("TSK", "task.assigned", "task", t.Id.ToString(), After: new { refNo, source = "minutes_approval" }, ActorUserId: by), ct);
+        }
+        var cancelled = await tx.ExecuteAsync("""
+            UPDATE tasks.tasks SET status = 'cancelled' WHERE status = 'draft' AND resolution_id = ANY(@ids::uuid[])
+            """, new { ids = notIssuedResolutions.ToArray() }, ct);
+        if (cancelled > 0)
+            await audit.WriteAsync(tx, new AuditEntry("TSK", "task.drafts_cancelled", "minutes", null, After: new { cancelled, reason = "القرار لم يصدر" }, ActorUserId: by), ct);
+        return drafts.Count;
+    }
 }

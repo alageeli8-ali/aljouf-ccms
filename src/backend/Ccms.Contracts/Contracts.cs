@@ -43,7 +43,9 @@ public static class Permissions
         DocumentView = "document.view", DocumentUpload = "document.upload", ReportsBody = "reports.body",
         PortalAccess = "portal.access",
         BodyLifecycle = "body.lifecycle.manage", BodyPolicy = "body.policy.manage", BodyDelegate = "body.delegate",
-        MeetingAttendance = "meeting.attendance", MeetingInvite = "meeting.invite";
+        MeetingAttendance = "meeting.attendance", MeetingInvite = "meeting.invite",
+        MinutesComment = "minutes.comment", MinutesReviewSecretary = "minutes.review_secretary", MinutesTemplates = "minutes.templates.manage",
+        VoteCast = "vote.cast", VoteManage = "vote.manage", VoteViewIndividual = "vote.view_individual";
 }
 
 public enum ScopeType { System, Body, Task, Document, Record }

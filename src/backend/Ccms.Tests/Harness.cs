@@ -90,13 +90,20 @@ public sealed class ApiClient : IDisposable
         return (await Check.Status(resp, 200, $"GET {url}"))!;
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, HttpContent? content, bool csrf)
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, HttpContent? content, bool csrf, string? idempotencyKey = null)
     {
         if (csrf && _csrf is null) await RefreshCsrfAsync();
         using var req = new HttpRequestMessage(method, url) { Content = content };
         if (csrf) req.Headers.Add("X-CSRF-Token", _csrf);
+        if (idempotencyKey is not null) req.Headers.Add("Idempotency-Key", idempotencyKey);
         return await _http.SendAsync(req);
     }
+
+    /// <summary>طلب إنشاء بمفتاح منع التكرار؛ إعادة الإرسال بالمفتاح نفسه تحاكي إعادة المحاولة أو تحديث الصفحة.</summary>
+    public Task<HttpResponseMessage> PostOnceAsync(string url, object? body, string key) =>
+        SendAsync(HttpMethod.Post, url, body is null ? null : JsonContent.Create(body), true, key);
+
+    public Task<byte[]> GetBytesAsync(string url) => _http.GetByteArrayAsync(url);
 
     public Task<HttpResponseMessage> PostAsync(string url, object? body = null, bool csrf = true) =>
         SendAsync(HttpMethod.Post, url, body is null ? null : JsonContent.Create(body), csrf);

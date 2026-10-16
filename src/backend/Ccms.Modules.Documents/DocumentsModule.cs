@@ -29,6 +29,7 @@ public sealed class DocumentsModule : IModule
     {
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.Section));
         services.AddScoped<IDocumentOwnerQuery, DocumentOwnerQuery>();
+        services.AddScoped<IDocumentStore, DocumentStore>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
@@ -40,7 +41,7 @@ public sealed class DocumentsModule : IModule
     }
 
     private static readonly string[] OwnerTypes = ["body", "meeting", "agenda_item", "minutes", "resolution", "task"];
-    private static readonly string[] Purposes = ["formation_decision", "agenda_memo", "attachment", "evidence"];
+    private static readonly string[] Purposes = ["formation_decision", "agenda_memo", "attachment", "evidence", "wet_signature", "approval_evidence"];
 
     private static Scope OwnerScope(string type, Guid id) => type switch
     {
@@ -143,4 +144,43 @@ internal sealed class DocumentOwnerQuery(Db db) : IDocumentOwnerQuery
     public async Task<IReadOnlyList<DocumentOwner>> GetOwnersAsync(Guid documentId, CancellationToken ct = default) =>
         await db.QueryAsync("SELECT owner_type, owner_id FROM docs.document_links WHERE document_id = @documentId", new { documentId },
             r => new DocumentOwner(r.GetString(0), r.GetGuid(1)), ct);
+}
+
+/// <summary>حفظ المستندات التي يولّدها النظام (PDF المحضر المعتمد) بالمنفذ نفسه وببصمة SHA-256.</summary>
+internal sealed class DocumentStore(Db db, IOptions<StorageOptions> options, IWebHostEnvironment env, IAuditWriter audit) : IDocumentStore
+{
+    private string Root => System.IO.Path.IsPathRooted(options.Value.Path) ? options.Value.Path : System.IO.Path.Combine(env.ContentRootPath, options.Value.Path);
+
+    public async Task<StoredDocument> SaveAsync(ISql tx, string fileName, string contentType, byte[] content, string ownerType, Guid ownerId,
+        string purpose, string classification, Guid by, CancellationToken ct = default)
+    {
+        var id = Guid.CreateVersion7();
+        var key = $"{DateTime.UtcNow:yyyy/MM}/{id:N}";
+        var full = System.IO.Path.Combine(Root, key);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(full)!);
+        await File.WriteAllBytesAsync(full, content, ct);
+        var sha = Convert.ToHexStringLower(SHA256.HashData(content));
+        await tx.ExecuteAsync("""
+            INSERT INTO docs.documents (id, file_name, content_type, size_bytes, sha256, storage_key, classification, uploaded_by)
+            VALUES (@id, @fileName, @contentType, @size, @sha, @key, @classification, @by)
+            """, new { id, fileName, contentType, size = (long)content.Length, sha, key, classification, by }, ct);
+        await tx.ExecuteAsync("INSERT INTO docs.document_links (id, document_id, owner_type, owner_id, purpose) VALUES (@lid, @id, @ownerType, @ownerId, @purpose)",
+            new { lid = Guid.CreateVersion7(), id, ownerType, ownerId, purpose }, ct);
+        await audit.WriteAsync(tx, new AuditEntry("DOC", "document.generated", "document", id.ToString(), After: new { ownerType, ownerId, purpose, sha, size = content.Length }), ct);
+        return new StoredDocument(id, sha, content.Length);
+    }
+
+    public async Task<byte[]?> ReadAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var key = await db.ScalarAsync<string>("SELECT storage_key FROM docs.documents WHERE id = @documentId AND deleted_at IS NULL", new { documentId }, ct);
+        if (key is null) return null;
+        var full = System.IO.Path.Combine(Root, key);
+        return File.Exists(full) ? await File.ReadAllBytesAsync(full, ct) : null;
+    }
+
+    public async Task<bool> IsLinkedAsync(ISql sql, Guid documentId, string ownerType, Guid ownerId, CancellationToken ct = default) =>
+        await sql.ScalarAsync<long>("""
+            SELECT count(*) FROM docs.document_links l JOIN docs.documents d ON d.id = l.document_id
+            WHERE l.document_id = @documentId AND l.owner_type = @ownerType AND l.owner_id = @ownerId AND d.deleted_at IS NULL
+            """, new { documentId, ownerType, ownerId }, ct) > 0;
 }

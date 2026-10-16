@@ -22,7 +22,13 @@ public sealed class MeetingsModule : IModule
         services.AddScoped<IRecordBodyResolver, AgendaItemBodyResolver>();
         services.AddScoped<IRecordRelationProvider, MeetingInviteeRelation>();
         services.AddScoped<QuorumService>();
-        if (configuration.GetValue("Workers:Enabled", true)) services.AddHostedService<MeetingReminderWorker>();
+        services.AddScoped<IVotingQuery, VotingQuery>();
+        services.AddScoped<IRecordBodyResolver, MotionBodyResolver>();
+        if (configuration.GetValue("Workers:Enabled", true))
+        {
+            services.AddHostedService<MeetingReminderWorker>();
+            services.AddHostedService<VotingDeadlineWorker>();
+        }
     }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
@@ -42,6 +48,7 @@ public sealed class MeetingsModule : IModule
         g.MapGet("/{id:guid}/activity", Activity);
         Attendance.Map(g);
         Agenda.Map(api, g);
+        Voting.Map(api, g);
     }
 
     public sealed record MeetingRequest(
@@ -391,9 +398,11 @@ public sealed class MeetingsModule : IModule
         {
             await tx.ExecuteAsync("SELECT 1 FROM meetings.meetings WHERE id = @id FOR UPDATE", new { id }, ct);
             var c = await quorum.LoadContextAsync(tx, id, ct);
+            var openMotions = await tx.QueryAsync("SELECT id FROM deliberation.motions WHERE meeting_id = @id AND status = 'open' FOR UPDATE", new { id }, r => r.GetGuid(0), ct);
             if (c.MeetingType == "circulation")
             {
                 if (c.Status != "agenda_published") throw new ConflictException("invalid-transition", "لا يُغلق التمرير من حالته الحالية");
+                foreach (var mid in openMotions) await Voting.CloseAsync(tx, mid, me.UserId, "meeting_closed", audit, ct);
                 var q = await quorum.ComputeAsync(tx, c, "circulation", ct);
                 await quorum.RecordAsync(tx, c, "circulation", q, null, me.UserId, ct);
                 if (!q.IsMet)
@@ -404,6 +413,7 @@ public sealed class MeetingsModule : IModule
                 }
             }
             else if (c.Status != "in_progress") throw new ConflictException("invalid-transition", "لا يُغلق إلا اجتماع منعقد");
+            else if (openMotions.Count > 0) throw new ConflictException("motion-open", "يوجد تصويت مفتوح؛ أغلقه أو اسحبه قبل إغلاق الاجتماع");
             var moved = await Agenda.DeferRemainingAsync(tx, id, c.BodyId, me.UserId, "لم يُناقش في الاجتماع", ct);
             await tx.ExecuteAsync("UPDATE meetings.meetings SET status = 'concluded', actual_ended_at = now(), actual_started_at = COALESCE(actual_started_at, starts_at) WHERE id = @id", new { id }, ct);
             await audit.WriteAsync(tx, new AuditEntry("MTG", "meeting.closed", "meeting", id.ToString(), After: new { deferredItems = moved }), ct);

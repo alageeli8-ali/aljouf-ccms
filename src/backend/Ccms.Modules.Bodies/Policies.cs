@@ -13,7 +13,7 @@ internal sealed class BodyPolicyQuery(Db db) : IBodyPolicyQuery
     internal const string Select = """
         SELECT p.id, p.body_id, p.version, p.effective_from, p.quorum_rule::text AS quorum_rule, p.voting_rule::text AS voting_rule,
                p.signoff_rule::text AS signoff_rule, p.minutes_review_days, p.extension_approver, p.allow_proxy, p.allow_remote_attendance,
-               p.allow_circulation, p.created_at, u.display_name_ar AS created_by_name
+               p.allow_circulation, p.created_at, u.display_name_ar AS created_by_name, p.minutes_workflow::text AS minutes_workflow
         FROM bodies.body_policies p LEFT JOIN iam.users u ON u.id = p.created_by
         """;
 
@@ -23,7 +23,8 @@ internal sealed class BodyPolicyQuery(Db db) : IBodyPolicyQuery
         return new BodyPolicy(r.Get<Guid>("id"), r.Get<Guid>("body_id"), r.Get<int>("version"), r.Get<DateOnly>("effective_from"),
             PolicyJson.Quorum(r.Get<string>("quorum_rule")), PolicyJson.Voting(r.Get<string>("voting_rule")), signoff.Required,
             r.Get<int>("minutes_review_days"), r.Get<string>("extension_approver"), r.Get<bool>("allow_proxy"), signoff.MaxProxies,
-            r.Get<bool>("allow_remote_attendance"), r.Get<bool>("allow_circulation"), r.Get<DateTime>("created_at"), r.Str("created_by_name"));
+            r.Get<bool>("allow_remote_attendance"), r.Get<bool>("allow_circulation"), r.Get<DateTime>("created_at"), r.Str("created_by_name"),
+            MinutesWorkflow.Parse(r.Str("minutes_workflow")));
     }
 
     public Task<BodyPolicy?> GetEffectiveAsync(Guid bodyId, DateOnly on, CancellationToken ct = default) =>
@@ -54,7 +55,15 @@ public sealed record PolicyRequest(
     [property: Range(1, 5)] int? MaxProxiesPerMember,
     bool AllowRemoteAttendance,
     bool AllowCirculation,
-    [property: Required(ErrorMessage = "سبب تعديل السياسة مطلوب"), MinLength(5), MaxLength(1000)] string Reason) : IValidatableObject
+    [property: Required(ErrorMessage = "سبب تعديل السياسة مطلوب"), MinLength(5), MaxLength(1000)] string Reason,
+    bool? MinutesSecretaryReview = null,
+    bool? MinutesChairReview = null,
+    bool? MinutesMemberReview = null,
+    [property: OneOf("none", "present_members", "present_members_and_chair", "all_members")] string? MinutesSignatures = null,
+    [property: OneOf("attestation", "wet_signature")] string? MinutesSignatureFallback = null,
+    [property: OneOf("chair", "recorded_external")] string? MinutesFinalApproval = null,
+    [property: OneOf("full", "final_only")] string? MinutesAmendmentReapproval = null,
+    [property: MaxLength(40)] string? MinutesTemplateCode = null) : IValidatableObject
 {
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -72,6 +81,19 @@ public sealed record PolicyRequest(
         ChairRequired = ChairRequired, CountRemote = CountRemote, CountProxies = AllowProxy, AllowOverride = AllowOverride,
     };
 
+    public MinutesWorkflow ToMinutesWorkflow() => new()
+    {
+        SecretaryReview = MinutesSecretaryReview ?? false,
+        ChairReview = MinutesChairReview ?? true,
+        MemberReview = MinutesMemberReview ?? true,
+        MemberReviewDays = MinutesReviewDays,
+        Signatures = MinutesSignatures ?? (SignoffRequired ? "present_members" : "none"),
+        SignatureFallback = MinutesSignatureFallback ?? "attestation",
+        FinalApproval = MinutesFinalApproval ?? "chair",
+        AmendmentReapproval = MinutesAmendmentReapproval ?? "full",
+        TemplateCode = string.IsNullOrWhiteSpace(MinutesTemplateCode) ? "standard" : MinutesTemplateCode,
+    };
+
     public VotingRule ToVoting() => new() { Threshold = VotingThreshold, Abstentions = Abstentions ?? "excluded", TieBreaker = TieBreaker, SecretAllowed = SecretAllowed };
 }
 
@@ -81,19 +103,20 @@ internal static class PolicyEndpoints
     public static readonly VotingRule DefaultVoting = new();
 
     public static async Task InsertDefaultAsync(ISql tx, Guid bodyId, DateOnly from, Guid by, CancellationToken ct) =>
-        await InsertAsync(tx, bodyId, 1, from, DefaultQuorum, DefaultVoting, false, 3, "secretary", false, 1, true, true, by, ct);
+        await InsertAsync(tx, bodyId, 1, from, DefaultQuorum, DefaultVoting, new MinutesWorkflow(), 3, "secretary", false, 1, true, true, by, ct);
 
-    public static Task InsertAsync(ISql tx, Guid bodyId, int version, DateOnly from, QuorumRule q, VotingRule v, bool signoffRequired, int reviewDays,
+    public static Task InsertAsync(ISql tx, Guid bodyId, int version, DateOnly from, QuorumRule q, VotingRule v, MinutesWorkflow w, int reviewDays,
         string extensionApprover, bool allowProxy, int maxProxies, bool allowRemote, bool allowCirculation, Guid by, CancellationToken ct) =>
         tx.ExecuteAsync("""
             INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule,
-              minutes_review_days, extension_approver, allow_proxy, allow_remote_attendance, allow_circulation, created_by)
-            VALUES (@id, @bodyId, @version, @from, @q::jsonb, @v::jsonb, @s::jsonb, @e::jsonb, @reviewDays, @extensionApprover, @allowProxy, @allowRemote, @allowCirculation, @by)
+              minutes_review_days, extension_approver, allow_proxy, allow_remote_attendance, allow_circulation, created_by, minutes_workflow)
+            VALUES (@id, @bodyId, @version, @from, @q::jsonb, @v::jsonb, @s::jsonb, @e::jsonb, @reviewDays, @extensionApprover, @allowProxy, @allowRemote, @allowCirculation, @by, @w::jsonb)
             """, new
         {
             id = Guid.CreateVersion7(), bodyId, version, from,
             q = JsonSerializer.Serialize(q, PolicyJson.Options), v = JsonSerializer.Serialize(v, PolicyJson.Options),
-            s = JsonSerializer.Serialize(new { required = signoffRequired, signers = "present_voting_members_except_chair", methods = new[] { "attestation", "wet_signature_evidence" }, maxProxiesPerMember = maxProxies }, PolicyJson.Options),
+            w = (w with { MemberReviewDays = reviewDays }).ToJson(),
+            s = JsonSerializer.Serialize(new { required = w.Signatures != "none", signers = "present_voting_members_except_chair", methods = new[] { "attestation", "wet_signature_evidence" }, maxProxiesPerMember = maxProxies }, PolicyJson.Options),
             e = DefaultEscalationJson, reviewDays, extensionApprover, allowProxy, allowRemote, allowCirculation, by,
         }, ct);
 
@@ -122,9 +145,9 @@ internal static class PolicyEndpoints
             var status = await tx.ScalarAsync<string>("SELECT status FROM bodies.bodies WHERE id = @id FOR UPDATE", new { id }, ct) ?? throw new NotFoundException();
             if (status is "dissolved" or "archived") throw new ConflictException("invalid-transition", "لا تُعدل سياسة جهة منتهية");
             var next = await tx.ScalarAsync<int>("SELECT COALESCE(max(version), 0) + 1 FROM bodies.body_policies WHERE body_id = @id", new { id }, ct);
-            await InsertAsync(tx, id, next, req.EffectiveFrom!.Value, req.ToQuorum(), req.ToVoting(), req.SignoffRequired, req.MinutesReviewDays,
+            await InsertAsync(tx, id, next, req.EffectiveFrom!.Value, req.ToQuorum(), req.ToVoting(), req.ToMinutesWorkflow(), req.MinutesReviewDays,
                 req.ExtensionApprover, req.AllowProxy, req.MaxProxiesPerMember ?? 1, req.AllowRemoteAttendance, req.AllowCirculation, me.UserId, ct);
-            await audit.WriteAsync(tx, new AuditEntry("BOD", "body.policy_changed", "body", id.ToString(), After: new { version = next, req.EffectiveFrom, quorum = req.ToQuorum(), voting = req.ToVoting(), req.Reason }), ct);
+            await audit.WriteAsync(tx, new AuditEntry("BOD", "body.policy_changed", "body", id.ToString(), After: new { version = next, req.EffectiveFrom, quorum = req.ToQuorum(), voting = req.ToVoting(), minutes = req.ToMinutesWorkflow(), req.Reason }), ct);
             return next;
         }, ct);
         return Results.Ok(new { version });
