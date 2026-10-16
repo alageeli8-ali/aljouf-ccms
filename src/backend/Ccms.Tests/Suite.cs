@@ -377,7 +377,7 @@ public sealed class Suite(TestContext ctx)
     public async Task ImpactConfirmation()
     {
         await Check.Status(await Admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_ENABLED", new { value = "true", reason = "تفعيل التوقيع" }), 200, "تفعيل");
-        await Check.Status(await Admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_PROVIDER", new { value = "sandbox", reason = "مزود الاختبار" }), 200, "المزود");
+        await Check.Status(await Admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_PROVIDER", new { value = "mock", reason = "مزود الاختبار" }), 200, "المزود");
         using var sec = await As("secretary");
         await Check.Status(await sec.PutAsync($"/api/v1/minutes/{_minutesA}/draft", new { sections = new[] { new { key = "opening", title = "الافتتاح", body = "افتتح الرئيس الاجتماع" } } }), 200, "المسودة");
         // عقد الاجتماع ثم رفع محضره: سياسة الجهة تقتضي توقيع الأعضاء

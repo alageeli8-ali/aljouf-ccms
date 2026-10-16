@@ -16,6 +16,7 @@ using Ccms.Modules.Notifications;
 using Ccms.Modules.Org;
 using Ccms.Modules.Reporting;
 using Ccms.Modules.Resolutions;
+using Ccms.Modules.Signatures;
 using Ccms.Modules.Tasks;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
@@ -30,7 +31,7 @@ IModule[] modules =
 [
     new IamModule(), new OrgModule(), new ConfigurationModule(), new AuditModule(), new NotificationsModule(),
     new BodiesModule(), new MeetingsModule(), new MinutesModule(), new ResolutionsModule(), new TasksModule(),
-    new DocumentsModule(), new ReportingModule(), new IntegrationsModule(),
+    new DocumentsModule(), new ReportingModule(), new IntegrationsModule(), new SignaturesModule(),
 ];
 foreach (var m in modules) m.AddServices(builder.Services, builder.Configuration);
 
@@ -114,6 +115,7 @@ if (openApiEnabled)
         .AllowAnonymous().ExcludeFromDescription();
 
 SsoEndpoints.Map(app);
+foreach (var m in modules) m.MapPublicEndpoints(app);
 
 var api = app.MapGroup("/api/v1").RequireAuthorization();
 api.AddEndpointFilter(async (ctx, next) =>

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Ccms.BuildingBlocks.Data;
 using Ccms.BuildingBlocks.Pdf;
+using Ccms.Contracts;
 
 namespace Ccms.Modules.Minutes;
 
@@ -192,7 +193,7 @@ public sealed record SignoffLine(string Name, string Role, string Method, string
 
 public sealed record MinutesPdfModel(MinutesSnapshot Snapshot, MinutesContent Content, IReadOnlyList<TemplateSection> Template, int VersionNo, string? ContentHash,
     string Status, string? VerificationCode, int AmendmentNo, string? AmendmentReason, IReadOnlyList<ApprovalLine> Approvals, IReadOnlyList<SignoffLine> Signoffs,
-    bool Draft);
+    bool Draft, bool ForSignature = false, IReadOnlyList<SignatureEvidenceLine>? Evidence = null);
 
 internal static class MinutesPdf
 {
@@ -232,6 +233,8 @@ internal static class MinutesPdf
         ["submitted"] = "رُفع للمراجعة", ["step_approved"] = "أُقرت المرحلة", ["amendment_opened"] = "فُتح التعديل", ["signatures_completed"] = "اكتملت التوقيعات",
         ["in_system"] = "اعتماد داخل النظام", ["recorded_external"] = "اعتماد خارج النظام مسجل بمرجع", ["attestation"] = "إقرار إلكتروني داخل النظام",
         ["wet_signature"] = "توقيع ورقي مرفوع", ["electronic_signature"] = "توقيع إلكتروني", ["valid"] = "مكتمل", ["requested"] = "مطلوب", ["invalidated"] = "أُبطل",
+        ["in_app_approval"] = "موافقة إلكترونية موثقة داخل النظام (ليست توقيعًا رقميًا بشهادة)", ["provider_esign"] = "توقيع إلكتروني عبر مزوّد خارجي",
+        ["pdf_digital_signature"] = "توقيع رقمي تشفيري على PDF", ["signed"] = "وُقّع", ["waiting"] = "بانتظار دوره", ["declined_signature"] = "رفض التوقيع",
         ["amends"] = "يعدّل", ["revokes"] = "يلغي", ["chair_delegate"] = "بالتفويض عن الرئيس", ["editor"] = "معد المحضر", ["governance_officer"] = "مسؤول المجالس",
     };
 
@@ -240,7 +243,9 @@ internal static class MinutesPdf
     public static byte[] Render(MinutesPdfModel m)
     {
         var s = m.Snapshot;
-        var footer = m.Draft
+        var footer = m.ForSignature
+            ? $"نسخة للتوقيع — الإصدار {m.VersionNo} — بصمة المحتوى SHA-256: {m.ContentHash}"
+            : m.Draft
             ? $"مسودة غير معتمدة — الإصدار {m.VersionNo}" + (m.ContentHash is { } dh ? $" — البصمة {dh[..16]}" : "")
             : $"رمز التحقق: {m.VerificationCode} — الإصدار المعتمد {m.VersionNo} — بصمة المحتوى SHA-256: {m.ContentHash}";
         var pdf = new PdfReport(new PdfReportOptions
@@ -249,10 +254,13 @@ internal static class MinutesPdf
             HeaderLine1 = "المكتب الاستراتيجي لتطوير منطقة الجوف",
             HeaderLine2 = $"{s.Meeting.BodyName} — محضر الاجتماع {s.Meeting.ReferenceNo}",
             FooterText = footer,
-            Watermark = m.Draft ? "مسودة — غير معتمدة" : null,
+            Watermark = m.ForSignature ? "نسخة للتوقيع — غير معتمدة بعد" : m.Draft ? "مسودة — غير معتمدة" : null,
             Author = s.Meeting.BodyName,
         });
         pdf.Title($"محضر {s.Meeting.TitleAr}");
+        if (m.ForSignature)
+            pdf.KeyValues([("الغرض", "نسخة للتوقيع لا تحمل أرقام القرارات؛ تُمنح الأرقام عند الاعتماد النهائي"), ("الإصدار", m.VersionNo.ToString()),
+                ("بصمة المحتوى (SHA-256)", m.ContentHash), ("الجهة", s.Meeting.BodyName), ("مرجع الاجتماع", s.Meeting.ReferenceNo)]);
         if (m.AmendmentNo > 0)
             pdf.Paragraph($"محضر معدّل (التعديل رقم {m.AmendmentNo}): {m.AmendmentReason}", 9.5, true, PdfColor.Hex("#8A5A00"));
 
@@ -378,6 +386,17 @@ internal static class MinutesPdf
                 if (m.Signoffs.Count > 0)
                     pdf.Table(["الاسم", "الصفة", "الطريقة", "الحالة", "التاريخ"], [0.26, 0.14, 0.24, 0.12, 0.24],
                         m.Signoffs.Select(x => (IReadOnlyList<string?>)[x.Name, L(x.Role), L(x.Method), L(x.Status), x.SignedAt is { } d ? Date(d) : null]).ToList());
+                if (m.Evidence is { Count: > 0 } ev)
+                {
+                    pdf.Paragraph("سجل التوقيع الإلكتروني (من وحدة التوقيع)", 10, true, PdfColor.Hex("#006837"));
+                    pdf.Table(["الموقّع", "النوع", "الحالة", "التاريخ", "الدليل"], [0.22, 0.24, 0.1, 0.18, 0.26],
+                        ev.Select(x => (IReadOnlyList<string?>)[x.Signer + (x.OnBehalfOf is { } o ? $" (عن {o})" : ""), L(x.SignatureType), L(x.Status == "declined" ? "declined_signature" : x.Status),
+                            x.SignedAt is { } d ? Date(d) : null,
+                            (x.CertificateSubject is { } cs ? $"الشهادة: {cs} ({x.CertificateSerial}) — " : "") + $"بصمة المستند: {(x.SignedDocumentSha256 ?? x.DocumentSha256)[..16]}…"
+                            + (x.VerificationStatus is { } vs ? $" — التحقق: {vs}" : "")]).ToList(), size: 8);
+                    pdf.Paragraph("الموافقة الإلكترونية داخل النظام إقرار موثق بالهوية والوقت وبصمة النسخة، وليست توقيعًا رقميًا بشهادة تشفير؛ ولا يُعد أي نوع مستوفيًا للمتطلبات النظامية قبل اعتماد المكتب للتكامل الفعلي.",
+                        8, false, PdfColor.Gray);
+                }
                 var steps = m.Approvals.Where(a => a.Decision is not "submitted" || a.VersionNo == m.VersionNo).ToList();
                 if (steps.Count == 0) { pdf.Paragraph("لم يُعتمد بعد.", 9.5, false, PdfColor.Gray); break; }
                 pdf.Table(["المرحلة", "الإجراء", "بواسطة", "الطريقة", "التاريخ"], [0.2, 0.18, 0.28, 0.16, 0.18],

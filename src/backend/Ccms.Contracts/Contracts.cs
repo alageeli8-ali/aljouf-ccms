@@ -15,6 +15,8 @@ public interface IModule
     bool IsOptional => false;
     void AddServices(IServiceCollection services, IConfiguration configuration);
     void MapEndpoints(IEndpointRouteBuilder api);
+    /// <summary>نقاط عامة خارج مجموعة الواجهة المحمية (مثل الاستدعاءات الراجعة لمزوّد موقّعة برسالة لا بجلسة).</summary>
+    void MapPublicEndpoints(IEndpointRouteBuilder app) { }
 }
 
 // ---------------- الهوية والصلاحيات ----------------
@@ -42,6 +44,7 @@ public static class Permissions
         TaskView = "task.view", TaskManage = "task.manage", TaskUpdate = "task.update", TaskVerify = "task.verify",
         TaskComment = "task.comment", TaskExtensionApprove = "task.extension.approve", TaskEscalate = "task.escalate",
         TaskRecordExternal = "task.record_external", TaskLettersManage = "task.letters.manage", TaskWorkflowManage = "task.workflow.manage",
+        ESignRequest = "esign.request", ESignManage = "esign.manage", ESignVerify = "esign.verify", ESignRoutesManage = "esign.routes.manage",
         DocumentView = "document.view", DocumentUpload = "document.upload", ReportsBody = "reports.body",
         PortalAccess = "portal.access",
         BodyLifecycle = "body.lifecycle.manage", BodyPolicy = "body.policy.manage", BodyDelegate = "body.delegate",

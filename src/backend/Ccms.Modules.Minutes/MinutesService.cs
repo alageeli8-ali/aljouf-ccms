@@ -15,6 +15,9 @@ internal sealed record VersionRow(Guid Id, int No, string Hash, DateTime Created
 /// <summary>خدمات مشتركة للمحضر: التحميل، والإصدارات وبصمتها، والإقرارات، وسجل الاعتماد، والإجراءات المتاحة، وPDF.</summary>
 internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocumentStore store, ILogger<MinutesService> log)
 {
+    public ISignatureGateway Gateway => gateway;
+    public IDocumentStore Store => store;
+
     public static readonly string[] ReviewStates = ["secretary_review", "chair_review", "member_review", "pending_signatures", "pending_final_approval"];
 
     public async Task<MinutesRow> LoadAsync(ISql sql, Guid id, bool forUpdate, CancellationToken ct)
@@ -90,13 +93,13 @@ internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocument
     public async Task<(string Method, string Reason)> SignatureMethodAsync(MinutesWorkflow wf, CancellationToken ct)
     {
         var (ready, reason) = await gateway.ReadinessAsync(ct);
-        return ready ? ("electronic_signature", "esign") : (wf.SignatureFallback == "wet_signature" ? "wet_signature" : "attestation", reason);
+        return ready ? ("esign_module", "esign") : (wf.SignatureFallback == "wet_signature" ? "wet_signature" : "attestation", reason);
     }
 
     public static async Task<List<Guid>> BodyUsersAsync(ISql sql, Guid bodyId, string[] roles, CancellationToken ct) =>
         await sql.QueryAsync("""
             SELECT DISTINCT user_id FROM bodies.body_members WHERE body_id = @bodyId AND status = 'active' AND role = ANY(@roles::text[])
-              AND start_date <= current_date AND (end_date IS NULL OR end_date >= current_date)
+              AND start_date <= (now() AT TIME ZONE 'Asia/Riyadh')::date AND (end_date IS NULL OR end_date >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
             """, new { bodyId, roles }, r => r.GetGuid(0), ct);
 
     public static async Task<List<Guid>> ChairAuthoritiesAsync(ISql sql, Guid bodyId, CancellationToken ct)
@@ -132,6 +135,7 @@ internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocument
             },
             canReturn = ReviewStates.Contains(row.Status) && (P(Permissions.MinutesEdit) || P(Permissions.MinutesApprove) || P(Permissions.MinutesReviewSecretary)),
             canSign = row.Status == "pending_signatures" && mySignoff == "attestation" && P(Permissions.MinutesSign),
+            signedViaModule = mySignoff is SignatureTypes.InAppApproval or SignatureTypes.ProviderESign or SignatureTypes.PdfDigitalSignature,
             mySignoffMethod = mySignoff,
             canRecordWet = row.Status == "pending_signatures" && P(Permissions.MinutesEdit),
             canApprove = row.Status == "pending_final_approval" && row.Workflow.FinalApproval == "chair" && P(Permissions.MinutesApprove) && current?.CreatedBy != me,
@@ -144,18 +148,18 @@ internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocument
 
     // ---------------- PDF ----------------
 
-    private async Task<MinutesPdfModel> ModelAsync(MinutesRow row, int? versionNo, CancellationToken ct)
+    private async Task<MinutesPdfModel> ModelAsync(ISql sql, MinutesRow row, int? versionNo, CancellationToken ct)
     {
-        var template = await Templates.GetSectionsAsync(db, row.TemplateId, ct);
-        var approvals = (await ApprovalsAsync(db, row.Id, ct)).Select(a => new ApprovalLine(a.Step, a.Decision, a.Actor, a.Capacity, a.OnBehalfOf, a.Method, a.Note,
+        var template = await Templates.GetSectionsAsync(sql, row.TemplateId, ct);
+        var approvals = (await ApprovalsAsync(sql, row.Id, ct)).Select(a => new ApprovalLine(a.Step, a.Decision, a.Actor, a.Capacity, a.OnBehalfOf, a.Method, a.Note,
             a.ExternalApprover, a.ExternalReference, a.ExternalDate, a.CreatedAt, a.VersionNo)).ToList();
         if (versionNo is null && row.Status is "draft" or "returned")
         {
             var content = MinutesContent.Parse(row.ContentJson);
-            var live = await SnapshotBuilder.BuildAsync(db, row.Id, content, ct);
+            var live = await SnapshotBuilder.BuildAsync(sql, row.Id, content, ct);
             return new MinutesPdfModel(live, content, template, row.VersionNo + 1, null, row.Status, null, row.AmendmentNo, row.AmendmentReason, approvals, [], true);
         }
-        var v = await db.QuerySingleAsync("""
+        var v = await sql.QuerySingleAsync("""
             SELECT id, version_no, content::text, snapshot::text, content_hash, amendment_no FROM minutes.minutes_versions
             WHERE minutes_id = @id AND (@no::int IS NULL OR version_no = @no) ORDER BY version_no DESC LIMIT 1
             """, new { id = row.Id, no = versionNo }, r => (Id: r.GetGuid(0), No: r.GetInt32(1), Content: r.GetString(2), Snapshot: r.GetString(3), Hash: r.GetString(4),
@@ -163,13 +167,13 @@ internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocument
         if (v == default) throw new NotFoundException("الإصدار غير موجود");
         var snapshot = MinutesSnapshot.Parse(v.Snapshot)!;
         var approved = row.Status == "approved" && v.Id == row.ApprovedVersionId
-            || await db.ScalarAsync<long>("SELECT count(*) FROM minutes.minutes_approvals WHERE minutes_version_id = @vid AND decision = 'approved'", new { vid = v.Id }, ct) > 0;
+            || await sql.ScalarAsync<long>("SELECT count(*) FROM minutes.minutes_approvals WHERE minutes_version_id = @vid AND decision = 'approved'", new { vid = v.Id }, ct) > 0;
         if (approved)
         {
             // الأرقام تُمنح عند الاعتماد: تُعرض أرقام القرارات والمهام الصادرة مع هذا الإصدار، دون تغيير محتواه المبصوم
-            var numbers = (await db.QueryAsync("SELECT id, number, status FROM resolutions.resolutions WHERE minutes_id = @id", new { id = row.Id },
+            var numbers = (await sql.QueryAsync("SELECT id, number, status FROM resolutions.resolutions WHERE minutes_id = @id", new { id = row.Id },
                 r => (Id: r.GetGuid(0), Number: r.Str("number"), Status: r.GetString(2)), ct)).ToDictionary(x => x.Id);
-            var taskRefs = (await db.QueryAsync("SELECT t.id, t.reference_no, t.status FROM tasks.tasks t JOIN resolutions.resolutions r ON r.id = t.resolution_id WHERE r.minutes_id = @id",
+            var taskRefs = (await sql.QueryAsync("SELECT t.id, t.reference_no, t.status FROM tasks.tasks t JOIN resolutions.resolutions r ON r.id = t.resolution_id WHERE r.minutes_id = @id",
                 new { id = row.Id }, r => (Id: r.GetGuid(0), Ref: r.Str("reference_no"), Status: r.GetString(2)), ct)).ToDictionary(x => x.Id);
             snapshot = snapshot with
             {
@@ -177,10 +181,11 @@ internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocument
                 Tasks = snapshot.Tasks.Select(t => taskRefs.TryGetValue(t.Id, out var x) ? t with { ReferenceNo = x.Ref, Status = x.Status } : t).ToList(),
             };
         }
-        var signoffs = (await SignoffsAsync(db, row.Id, v.Id, ct)).Where(s => s.VersionNo == v.No && s.Status != "invalidated")
+        var signoffs = (await SignoffsAsync(sql, row.Id, v.Id, ct)).Where(s => s.VersionNo == v.No && s.Status != "invalidated")
             .Select(s => new SignoffLine(s.Name, s.SignerRole, s.Method, s.Status, s.Reservation, s.SignedAt)).ToList();
+        var evidence = approved ? await gateway.EvidenceForVersionAsync(v.Id, ct) : [];
         return new MinutesPdfModel(snapshot, MinutesContent.Parse(v.Content), template, v.No, v.Hash, row.Status, approved ? row.VerificationCode : null,
-            v.Amendment, row.AmendmentReason, approvals.Where(a => a.VersionNo is null || a.VersionNo <= v.No).ToList(), signoffs, !approved);
+            v.Amendment, row.AmendmentReason, approvals.Where(a => a.VersionNo is null || a.VersionNo <= v.No).ToList(), signoffs, !approved, Evidence: evidence);
     }
 
     public async Task<(byte[] Bytes, string Name)> PdfAsync(Guid id, int? versionNo, CancellationToken ct)
@@ -190,8 +195,16 @@ internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocument
         var wantsApproved = row.Status == "approved" && (versionNo is null || versionNo == approvedNo);
         if (wantsApproved && row.PdfDocumentId is { } doc && await store.ReadAsync(doc, ct) is { } stored)
             return (stored, $"minutes-{row.MeetingRef}-v{approvedNo}.pdf");
-        var model = await ModelAsync(row, wantsApproved ? approvedNo : versionNo, ct);
+        var model = await ModelAsync(db, row, wantsApproved ? approvedNo : versionNo, ct);
         return (MinutesPdf.Render(model), $"minutes-{row.MeetingRef}-v{model.VersionNo}{(model.Draft ? "-draft" : "")}.pdf");
+    }
+
+    /// <summary>نسخة PDF الإصدار المرسلة للتوقيع: «نسخة للتوقيع — غير معتمدة بعد» ببصمة المحتوى كاملة. تُولّد داخل معاملة دخول مرحلة التوقيع
+    /// وتُحفظ مرة واحدة في وحدة التوقيع؛ لا يُعاد توليدها لنفس الطلب.</summary>
+    public async Task<byte[]> SignatureCopyAsync(ISql tx, MinutesRow row, int versionNo, CancellationToken ct)
+    {
+        var model = await ModelAsync(tx, row, versionNo, ct);
+        return MinutesPdf.Render(model with { Draft = false, ForSignature = true });
     }
 
     /// <summary>يولّد PDF الإصدار المعتمد ويحفظه ببصمته بعد الاعتماد. فشله لا يلغي الاعتماد؛ يُعاد توليده عند أول طلب.</summary>
@@ -202,7 +215,7 @@ internal sealed class MinutesService(Db db, ISignatureGateway gateway, IDocument
             var row = await LoadAsync(db, id, false, ct);
             if (row.Status != "approved" || row.ApprovedVersionId is null) return null;
             var approvedNo = await db.ScalarAsync<int>("SELECT version_no FROM minutes.minutes_versions WHERE id = @v", new { v = row.ApprovedVersionId }, ct);
-            var bytes = MinutesPdf.Render(await ModelAsync(row, approvedNo, ct));
+            var bytes = MinutesPdf.Render(await ModelAsync(db, row, approvedNo, ct));
             return await db.InTransactionAsync(async tx =>
             {
                 var doc = await store.SaveAsync(tx, $"minutes-{row.MeetingRef}-v{approvedNo}.pdf", "application/pdf", bytes, "minutes", id, "minutes_pdf", row.Classification, by, ct);

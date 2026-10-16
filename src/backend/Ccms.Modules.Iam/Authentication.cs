@@ -177,7 +177,7 @@ public sealed record LoginRequest(
 
 internal sealed class LocalLoginService(Db db, IClock clock, IOptions<AuthOptions> options, IAuditWriter audit, IFeatureService features)
 {
-    private static readonly PasswordHasher<object> Hasher = new();
+    internal static readonly PasswordHasher<object> Hasher = new();
 
     public static string Hash(string password) => Hasher.HashPassword(null!, password);
 
@@ -221,7 +221,7 @@ internal sealed class LocalLoginService(Db db, IClock clock, IOptions<AuthOption
         // حسابات الجهات الخارجية ليست في دليل المكتب: تدخل محليًا عبر البوابة حين تكون مفعلة فقط
         var portalEnabled = await features.IsEnabledAsync(FeatureKeys.ExternalPortalEnabled, ct);
         var externalPortalUser = row.Type == "external" && await db.ScalarAsync<long>("""
-            SELECT count(*) FROM bodies.body_members WHERE user_id = @id AND status = 'active' AND (end_date IS NULL OR end_date >= current_date)
+            SELECT count(*) FROM bodies.body_members WHERE user_id = @id AND status = 'active' AND (end_date IS NULL OR end_date >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
             """, new { id = row.Id }, ct) == 0;
         if (o.BreakGlassOnly && row.Type != "local_breakglass" && !(externalPortalUser && portalEnabled))
         {
@@ -252,5 +252,26 @@ internal sealed class LocalLoginService(Db db, IClock clock, IOptions<AuthOption
         }
         await db.ExecuteAsync("UPDATE iam.local_credentials SET failed_attempts = 0, locked_until = NULL WHERE user_id = @id", new { id = row.Id }, ct);
         return (row.Id, row.Name);
+    }
+}
+
+/// <summary>إعادة التحقق من الهوية قبل التوقيع: كلمة المرور المحلية، وتُحسب المحاولة الفاشلة ضمن قفل الحساب.</summary>
+internal sealed class Reauthenticator(Db db, IAuditWriter audit) : IReauthenticator
+{
+    public async Task<bool?> VerifyPasswordAsync(Guid userId, string password, CancellationToken ct = default)
+    {
+        var row = await db.QuerySingleAsync("SELECT password_hash, locked_until FROM iam.local_credentials WHERE user_id = @userId", new { userId },
+            r => (Hash: r.GetString(0), LockedUntil: r.IsDBNull(1) ? (DateTime?)null : r.GetDateTime(1)), ct);
+        if (row == default) return null;
+        if (row.LockedUntil is { } until && until > DateTime.UtcNow) return false;
+        var ok = LocalLoginService.Hasher.VerifyHashedPassword(null!, row.Hash, password) != PasswordVerificationResult.Failed;
+        if (ok) return true;
+        await db.ExecuteAsync("""
+            UPDATE iam.local_credentials SET failed_attempts = failed_attempts + 1,
+              locked_until = CASE WHEN failed_attempts + 1 >= 5 THEN now() + interval '15 minutes' ELSE locked_until END
+            WHERE user_id = @userId
+            """, new { userId }, ct);
+        await audit.WriteAsync(new AuditEntry("IAM", "auth.reauth_failed", "user", userId.ToString(), Outcome: "denied"), ct);
+        return false;
     }
 }

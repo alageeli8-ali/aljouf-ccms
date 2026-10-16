@@ -477,7 +477,7 @@ internal sealed class ResolutionExecutionHook(INotifier notifier, IAuditWriter a
         if (r == default || r.Status is not ("issued" or "in_execution")) return;
         var users = await tx.QueryAsync("""
             SELECT DISTINCT user_id FROM bodies.body_members WHERE body_id = @b AND status = 'active' AND role IN ('secretary','chair')
-              AND start_date <= current_date AND (end_date IS NULL OR end_date >= current_date)
+              AND start_date <= (now() AT TIME ZONE 'Asia/Riyadh')::date AND (end_date IS NULL OR end_date >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
             """, new { b = r.Body }, x => x.GetGuid(0), ct);
         foreach (var u in users)
             await notifier.NotifyAsync(tx, new NotificationRequest(u, "resolution_tasks_completed", $"اكتملت كل مهام القرار {r.Number}؛ سجّل تنفيذه",

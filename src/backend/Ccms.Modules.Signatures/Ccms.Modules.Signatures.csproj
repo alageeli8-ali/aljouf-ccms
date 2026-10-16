@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>وحدة التوقيع الإلكتروني المستقلة والاختيارية (ADR-020): مسارات التوقيع، والطلبات المرتبطة بإصدار ثابت، والمزوّدون القابلون للتبديل، وتوقيع PDF التشفيري والتحقق منه.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Ccms.Contracts/Ccms.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ccms.Tests" />
+  </ItemGroup>
+</Project>

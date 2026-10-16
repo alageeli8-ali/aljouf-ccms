@@ -77,7 +77,6 @@ public sealed class IntegrationsModule : IModule
         ai.MapGet("/status", AiStatus);
         ai.MapPost("/minutes/{id:guid}/summary", AiSummary);
 
-        api.MapGet("/esign/status", ESignStatus).WithTags("E-signature (optional)");
         api.MapGet("/correspondence/status", CorrespondenceStatus).WithTags("Correspondence (optional)");
     }
 
@@ -104,24 +103,6 @@ public sealed class IntegrationsModule : IModule
         await access.DemandAsync(Permissions.MinutesView, Scope.Record("minutes", id), ct);
         await status.DemandAvailableAsync("ai", ct);
         return Results.Problem(statusCode: 501, title: "قدرة التلخيص تُنفذ في المرحلة 7ب بعد توفر خادم النموذج", type: "/problems/capability-not-implemented");
-    }
-
-    private static async Task<IResult> ESignStatus(IFeatureService features, IConnectorStatusStore status, ICurrentUser me, CancellationToken ct)
-    {
-        if (!me.IsAuthenticated) throw new UnauthenticatedException();
-        await features.DemandEnabledAsync(FeatureKeys.ESignatureEnabled, ct);
-        return Results.Ok(new
-        {
-            provider = await features.GetValueAsync(FeatureKeys.ESignatureProvider, ct),
-            method = await features.GetValueAsync(FeatureKeys.ESignatureMethod, ct),
-            memberRequired = await features.IsEnabledAsync(FeatureKeys.ESignatureMemberRequired, ct),
-            chairRequired = await features.IsEnabledAsync(FeatureKeys.ESignatureChairRequired, ct),
-            secretaryRequired = await features.IsEnabledAsync(FeatureKeys.ESignatureSecretaryRequired, ct),
-            sequential = await features.IsEnabledAsync(FeatureKeys.ESignatureSequential, ct),
-            pdfOutput = await features.IsEnabledAsync(FeatureKeys.ESignaturePdfOutput, ct),
-            reauthRequired = await features.IsEnabledAsync(FeatureKeys.ESignatureReauthRequired, ct),
-            connection = (await status.GetAsync("esign", ct))?.StateCode ?? "not_configured",
-        });
     }
 
     private static async Task<IResult> CorrespondenceStatus(IFeatureService features, IConnectorStatusStore status, ICurrentUser me, CancellationToken ct)
@@ -181,8 +162,8 @@ internal sealed class ESignConnector(IOptions<IntegrationOptions> options, IHttp
         var provider = await features.GetValueAsync(FeatureKeys.ESignatureProvider, ct);
         return provider switch
         {
-            "sandbox" when env.IsProduction() => new ConnectorHealth(ConnectorState.Failing, "المحاكي sandbox ممنوع في بيئة الإنتاج"),
-            "sandbox" => new ConnectorHealth(ConnectorState.Healthy, "محاكي داخلي للاختبار فقط — ليس توقيعًا ذا حجية"),
+            "mock" when env.IsProduction() => new ConnectorHealth(ConnectorState.Failing, "المزوّد التجريبي mock ممنوع في بيئة الإنتاج"),
+            "mock" => new ConnectorHealth(ConnectorState.Healthy, "مزوّد تجريبي للاختبار فقط — ليس خدمة توقيع إنتاجية"),
             "national_provider" when options.Value.ESign.NationalProviderBaseUrl.Length == 0 =>
                 new ConnectorHealth(ConnectorState.NotConfigured, "لم يُتعاقد مع مزوّد توقيع معتمد بعد (Q-09)"),
             "national_provider" => await Probe.HttpAsync(http, options.Value.ESign.NationalProviderBaseUrl, null, ct),

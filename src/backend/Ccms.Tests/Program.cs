@@ -51,6 +51,7 @@ results.AddRange(await Runner.RunAsync(new Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase2Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase3Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase4Suite(ctx)));
+results.AddRange(await Runner.RunAsync(new Phase6Suite(ctx)));
 ctx.HistoryCountBeforeRestart = (await ctx.AdminClient!.GetJsonAsync("/api/v1/admin/features/history"))["total"]!.GetValue<long>();
 
 // المرحلة ب: إيقاف ثم تشغيل بإعدادات مختلفة على البيانات نفسها
@@ -80,7 +81,7 @@ Console.WriteLine($"\n{passed}/{results.Count} ناجح — {sw.Elapsed.TotalSec
 if (args.Length > 0)
 {
     var md = new StringBuilder();
-    md.AppendLine("# نتائج اختبارات المراحل 1–4").AppendLine();
+    md.AppendLine("# نتائج اختبارات المراحل 1–4 ووحدة التوقيع الإلكتروني").AppendLine();
     md.AppendLine($"- التاريخ: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
     md.AppendLine($"- البيئة: PostgreSQL ({server}) — قاعدة جديدة `{dbName}` لكل تشغيل؛ التطبيق يعمل كعملية مستقلة ببيئة Testing");
     md.AppendLine($"- النتيجة: **{passed}/{results.Count} ناجح** خلال {sw.Elapsed.TotalSeconds:0} ثانية").AppendLine();

@@ -84,10 +84,21 @@ public interface IDocumentStore
     Task<bool> IsLinkedAsync(ISql sql, Guid documentId, string ownerType, Guid ownerId, CancellationToken ct = default);
 }
 
-/// <summary>بوابة التوقيع الإلكتروني. تنفيذها الفعلي في وحدة التوقيع (المرحلة 6)؛ قبل ذلك لا تكون جاهزة،
-/// فيعمل مسار الاعتماد البديل المحدد في سياسة الجهة ويُوثَّق سببه.</summary>
+/// <summary>بوابة التوقيع الإلكتروني تنفذها وحدة التوقيع المستقلة (ADR-020). إن لم تكن جاهزة يعمل مسار الاعتماد البديل
+/// المحدد في سياسة الجهة ويُوثَّق سببه؛ وحدة المحاضر لا تعرف تفاصيل المزوّد ولا نوع التوقيع.</summary>
 public interface ISignatureGateway
 {
-    /// <summary>جاهزة لاستقبال طلبات التوقيع: الوحدة مفعلة والمزوّد سليم والتكامل منفذ.</summary>
+    /// <summary>جاهزة لإنشاء طلبات توقيع جديدة: الوحدة مفعلة، والنوع المختار مهيأ (والمزوّد مضبوط ومسموح في البيئة إن لزم).</summary>
     Task<(bool Ready, string Reason)> ReadinessAsync(CancellationToken ct = default);
+
+    /// <summary>ينشئ طلب توقيع لإصدار ثابت من المحضر (داخل معاملة دخول مرحلة التوقيع). يعيد null إن لم تكن الوحدة جاهزة.</summary>
+    Task<CreatedSignatureRequest?> CreateForMinutesAsync(ISql tx, MinutesSignatureSubject subject, Guid by, CancellationToken ct = default) =>
+        Task.FromResult<CreatedSignatureRequest?>(null);
+
+    /// <summary>يُبطل الطلبات الحية على إصدار (عند إعادة المحضر للتعديل) بسبب موثق؛ التوقيعات المكتملة تبقى في سجل الطلب.</summary>
+    Task<int> VoidForVersionAsync(ISql tx, Guid minutesVersionId, string reason, Guid by, CancellationToken ct = default) => Task.FromResult(0);
+
+    /// <summary>أدلة التوقيع لإصدار (لإدراجها في سجل الاعتماد بملف PDF المعتمد).</summary>
+    Task<IReadOnlyList<SignatureEvidenceLine>> EvidenceForVersionAsync(Guid minutesVersionId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<SignatureEvidenceLine>>([]);
 }

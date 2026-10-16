@@ -47,7 +47,7 @@ internal static class Workflow
         if (v is null || v.Hash != hash) throw new ConflictException("hash-mismatch", "البصمة لا تطابق الإصدار الحالي؛ أعد تحميل المحضر (BRL-06)");
     }
 
-    private static Task RecordAsync(ISql tx, Guid minutesId, Guid? versionId, string step, string decision, Guid actor, string? capacity = null, Guid? onBehalf = null,
+    internal static Task RecordAsync(ISql tx, Guid minutesId, Guid? versionId, string step, string decision, Guid actor, string? capacity = null, Guid? onBehalf = null,
         Guid? delegation = null, string? method = null, string? hash = null, string? note = null, string? extApprover = null, string? extRef = null,
         DateOnly? extDate = null, Guid? evidence = null, CancellationToken ct = default) =>
         tx.ExecuteAsync("""
@@ -57,7 +57,7 @@ internal static class Workflow
             """, new { id = Guid.CreateVersion7(), minutesId, versionId, step, decision, actor, capacity, onBehalf, delegation, method, hash, note, extApprover, extRef, extDate, evidence }, ct);
 
     /// <summary>صفة المعتمد: الرئيس، أو المفوض بصلاحياته (ويُسجل المفوِّض والتفويض)، أو أمين السر، أو غيرهم.</summary>
-    private static async Task<(string Capacity, Guid? OnBehalf, Guid? Delegation)> CapacityAsync(ISql tx, Guid bodyId, Guid me, CancellationToken ct)
+    internal static async Task<(string Capacity, Guid? OnBehalf, Guid? Delegation)> CapacityAsync(ISql tx, Guid bodyId, Guid me, CancellationToken ct)
     {
         var role = await tx.ScalarAsync<string>("""
             SELECT role FROM bodies.body_members WHERE body_id = @bodyId AND user_id = @me AND status = 'active' ORDER BY CASE role WHEN 'chair' THEN 0 WHEN 'secretary' THEN 1 ELSE 2 END LIMIT 1
@@ -71,7 +71,7 @@ internal static class Workflow
         return (role ?? "governance_officer", null, null);
     }
 
-    private static async Task NotifyAsync(ISql tx, INotifier notifier, IEnumerable<Guid> users, MinutesRow row, string type, string titleAr, string titleEn, string key,
+    internal static async Task NotifyAsync(ISql tx, INotifier notifier, IEnumerable<Guid> users, MinutesRow row, string type, string titleAr, string titleEn, string key,
         string severity = "info", CancellationToken ct = default)
     {
         foreach (var u in users.Distinct())
@@ -80,7 +80,7 @@ internal static class Workflow
     }
 
     /// <summary>الانتقال إلى مرحلة: يضبط الحالة والمهلة، وينشئ طلبات التوقيع عند الدخول في مرحلته، ويُشعر أصحاب المرحلة.</summary>
-    private static async Task<string> EnterAsync(ISql tx, MinutesService svc, INotifier notifier, MinutesRow row, VersionRow version, string step, Guid by, CancellationToken ct)
+    internal static async Task<string> EnterAsync(ISql tx, MinutesService svc, INotifier notifier, MinutesRow row, VersionRow version, string step, Guid by, CancellationToken ct)
     {
         await tx.ExecuteAsync("""
             UPDATE minutes.minutes SET status = @step::text, status_changed_at = now(), status_reason = NULL,
@@ -108,7 +108,7 @@ internal static class Workflow
                     $"المحضر متاح لملاحظاتكم خلال {row.Workflow.MemberReviewDays} أيام", "Minutes open for member comments", "minutes_review:members:" + version.No, "info", ct);
                 break;
             case "pending_signatures":
-                if (await CreateSignoffsAsync(tx, svc, notifier, row, version, ct) == 0)
+                if (await CreateSignoffsAsync(tx, svc, notifier, row, version, by, ct) == 0)
                 {
                     await RecordAsync(tx, row.Id, version.Id, "pending_signatures", "signatures_completed", by, note: "لا يوجد موقعون مطلوبون", ct: ct);
                     var steps = row.Workflow.Steps(row.AmendmentNo > 0);
@@ -120,7 +120,7 @@ internal static class Workflow
     }
 
     /// <summary>الموقِّعون حسب سياسة الجهة: الحاضرون من الأعضاء المصوتين (عدا الرئيس أو معه)، أو كل الأعضاء المصوتين.</summary>
-    private static async Task<int> CreateSignoffsAsync(ISql tx, MinutesService svc, INotifier notifier, MinutesRow row, VersionRow version, CancellationToken ct)
+    private static async Task<int> CreateSignoffsAsync(ISql tx, MinutesService svc, INotifier notifier, MinutesRow row, VersionRow version, Guid by, CancellationToken ct)
     {
         var mode = row.Workflow.Signatures;
         var circulation = row.MeetingType == "circulation";
@@ -134,7 +134,29 @@ internal static class Workflow
               AND (@mode::text <> 'present_members' OR bm.role <> 'chair')
             ORDER BY bm.user_id, bm.start_date DESC
             """, new { meeting = row.MeetingId, mode, circulation }, r => (User: r.GetGuid(0), Role: r.GetString(1)), ct);
-        var (method, reason) = await svc.SignatureMethodAsync(row.Workflow, ct);
+        var (ready, readiness) = await svc.Gateway.ReadinessAsync(ct);
+        if (ready)
+        {
+            // وحدة التوقيع تحدد من يوقّع وبأي ترتيب ونوع وفق مسار الجهة؛ المحاضر تقدّم المرشحين من سياسة الجهة والحضور
+            var chairs = await MinutesService.BodyUsersAsync(tx, row.BodyId, ["chair"], ct);
+            var candidates = new SignatureCandidates(await MinutesService.BodyUsersAsync(tx, row.BodyId, ["secretary"], ct),
+                signers.Where(x => x.Role != "chair").Select(x => x.User).ToList(), chairs, signers.Any(x => x.Role == "chair"));
+            var pdf = await svc.SignatureCopyAsync(tx, row, version.No, ct);
+            var created = await svc.Gateway.CreateForMinutesAsync(tx, new MinutesSignatureSubject(row.Id, version.Id, version.No, version.Hash, row.BodyId, row.MeetingType,
+                row.MeetingRef ?? "", row.Classification, pdf, $"minutes-{row.MeetingRef}-v{version.No}-for-signature.pdf", candidates), by, ct);
+            if (created is not null)
+            {
+                foreach (var x in created.Signers)
+                    await tx.ExecuteAsync("""
+                        INSERT INTO minutes.minutes_signoffs (id, minutes_version_id, user_id, method, content_hash, signer_role, method_reason, signature_request_id, signature_signer_id)
+                        VALUES (@sid, @vid, @uid, @method, @hash, @role, 'esign', @rid, @signer)
+                        """, new { sid = Guid.CreateVersion7(), vid = version.Id, uid = x.UserId, method = created.SignatureType, hash = version.Hash, role = x.Role,
+                            rid = created.RequestId, signer = x.SignerId }, ct);
+                return created.Signers.Count;
+            }
+        }
+        var method = row.Workflow.SignatureFallback == "wet_signature" ? "wet_signature" : "attestation";
+        var reason = ready ? "esign_no_signers" : readiness;
         foreach (var s in signers)
             await tx.ExecuteAsync("""
                 INSERT INTO minutes.minutes_signoffs (id, minutes_version_id, user_id, method, content_hash, signer_role, method_reason)
@@ -148,7 +170,7 @@ internal static class Workflow
         return pending.Count;
     }
 
-    private static async Task<string> AdvanceAsync(ISql tx, MinutesService svc, INotifier notifier, MinutesRow row, VersionRow version, Guid by, CancellationToken ct)
+    internal static async Task<string> AdvanceAsync(ISql tx, MinutesService svc, INotifier notifier, MinutesRow row, VersionRow version, Guid by, CancellationToken ct)
     {
         var steps = row.Workflow.Steps(row.AmendmentNo > 0).ToList();
         var i = steps.IndexOf(row.Status);
@@ -156,7 +178,7 @@ internal static class Workflow
         return await EnterAsync(tx, svc, notifier, row, version, steps[i + 1], by, ct);
     }
 
-    private static async Task<bool> SignaturesCompleteAsync(ISql tx, Guid versionId, CancellationToken ct) =>
+    internal static async Task<bool> SignaturesCompleteAsync(ISql tx, Guid versionId, CancellationToken ct) =>
         await tx.ScalarAsync<long>("SELECT count(*) FROM minutes.minutes_signoffs WHERE minutes_version_id = @versionId AND status = 'requested'", new { versionId }, ct) == 0;
 
     // ---------------- الانتقالات ----------------
@@ -228,6 +250,8 @@ internal static class Workflow
             var invalidated = await tx.ExecuteAsync("""
                 UPDATE minutes.minutes_signoffs SET status = 'invalidated', invalidated_reason = @reason WHERE minutes_version_id = @vid AND status <> 'invalidated'
                 """, new { vid = version!.Id, reason = "أُعيد المحضر للتعديل: " + req.Reason }, ct);
+            // طلب التوقيع الجاري على هذا الإصدار يُبطل بسبب موثق (لا يُستبدل مستنده بصمت)؛ التوقيعات المكتملة تبقى في سجله
+            await svc.Gateway.VoidForVersionAsync(tx, version.Id, "أُعيد المحضر للتعديل: " + req.Reason, me.UserId, ct);
             var (capacity, onBehalf, delegation) = await CapacityAsync(tx, row.BodyId, me.UserId, ct);
             await RecordAsync(tx, id, version.Id, row.Status, "returned", me.UserId, capacity, onBehalf, delegation, "in_system", version.Hash, req.Reason, ct: ct);
             await tx.ExecuteAsync("UPDATE minutes.minutes SET status = 'returned', status_reason = @Reason, status_changed_at = now(), review_deadline = NULL WHERE id = @id",
@@ -255,7 +279,8 @@ internal static class Workflow
                 new { vid = version!.Id, me = me.UserId }, r => (Id: r.GetGuid(0), Method: r.GetString(1)), ct);
             if (s == default) throw new ConflictException("no-signoff-request", "لا يوجد طلب إقرار قائم لك على هذا الإصدار");
             DemandHash(version, req.ContentHash);
-            if (s.Method == "electronic_signature") throw new ConflictException("electronic-signature-required", "هذا الإقرار يتطلب التوقيع الإلكتروني عبر المزوّد");
+            if (s.Method is "electronic_signature" or SignatureTypes.InAppApproval or SignatureTypes.ProviderESign or SignatureTypes.PdfDigitalSignature)
+                throw new ConflictException("electronic-signature-required", "هذا الإقرار يتم عبر وحدة التوقيع الإلكتروني (طلب التوقيع في صفحة المحضر)");
             if (s.Method == "wet_signature") throw new ConflictException("wet-signature-required", "هذا التوقيع ورقي يرفعه أمين السر");
             await tx.ExecuteAsync("UPDATE minutes.minutes_signoffs SET status = 'valid', signed_at = now(), reservation_text = @Reservation, recorded_by = @me WHERE id = @sid",
                 new { sid = s.Id, req.Reservation, me = me.UserId }, ct);

@@ -128,14 +128,14 @@ internal static class SampleData
                   formation_decision_no, formation_decision_date, term_start, classification, status, created_by)
                 VALUES (@body, 'DTC', @ref, 'permanent_committee', 'لجنة التحول الرقمي (تجريبية)', 'Digital Transformation Committee (sample)',
                         'تسريع التحول الرقمي في المكتب', 'الإشراف على مبادرات التحول الرقمي ومتابعة تنفيذها', 'المجلس التنفيذي (تجريبي)', 'monthly',
-                        'ق/1/تجريبي', current_date - 30, current_date - 30, 'restricted', 'active', @gov)
+                        'ق/1/تجريبي', (now() AT TIME ZONE 'Asia/Riyadh')::date - 30, (now() AT TIME ZONE 'Asia/Riyadh')::date - 30, 'restricted', 'active', @gov)
                 """, new { body, gov, @ref = $"BOD-{y}-0001" });
-            await tx.ExecuteAsync("INSERT INTO bodies.body_terms (id, body_id, change_type, term_start, decision_no, decision_date, created_by) VALUES (@id, @body, 'initial', current_date - 30, 'ق/1/تجريبي', current_date - 30, @gov)",
+            await tx.ExecuteAsync("INSERT INTO bodies.body_terms (id, body_id, change_type, term_start, decision_no, decision_date, created_by) VALUES (@id, @body, 'initial', (now() AT TIME ZONE 'Asia/Riyadh')::date - 30, 'ق/1/تجريبي', (now() AT TIME ZONE 'Asia/Riyadh')::date - 30, @gov)",
                 new { id = Guid.CreateVersion7(), body, gov });
             var policyId = Guid.CreateVersion7();
             await tx.ExecuteAsync("""
                 INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule, allow_proxy, allow_remote_attendance, allow_circulation, minutes_workflow)
-                VALUES (@policyId, @body, 1, current_date - 30, '{"type":"majority","chairRequired":true,"countRemote":true,"countProxies":true,"allowOverride":false}',
+                VALUES (@policyId, @body, 1, (now() AT TIME ZONE 'Asia/Riyadh')::date - 30, '{"type":"majority","chairRequired":true,"countRemote":true,"countProxies":true,"allowOverride":false}',
                         '{"threshold":"majority_of_votes_cast","abstentions":"excluded","tieBreaker":"chair_casting_vote","secretAllowed":true}', '{"required":true,"maxProxiesPerMember":1}', '{"levels":[]}', true, true, true,
                         '{"secretaryReview":false,"chairReview":true,"memberReview":true,"memberReviewDays":3,"signatures":"present_members","signatureFallback":"attestation","finalApproval":"chair","amendmentReapproval":"full","templateCode":"standard"}')
                 """, new { policyId, body });
@@ -144,23 +144,23 @@ internal static class SampleData
             {
                 var mid = Guid.CreateVersion7();
                 memberIds[uid] = mid;
-                await tx.ExecuteAsync("INSERT INTO bodies.body_members (id, body_id, user_id, role, is_voting, start_date) VALUES (@mid, @body, @uid, @role, @voting, current_date - 30)",
+                await tx.ExecuteAsync("INSERT INTO bodies.body_members (id, body_id, user_id, role, is_voting, start_date) VALUES (@mid, @body, @uid, @role, @voting, (now() AT TIME ZONE 'Asia/Riyadh')::date - 30)",
                     new { mid, body, uid, role, voting });
             }
-            await tx.ExecuteAsync("INSERT INTO bodies.body_members (id, body_id, user_id, role, is_voting, start_date, alternate_for_member_id) VALUES (@id, @body, @alternate, 'alternate', false, current_date - 30, @principal)",
+            await tx.ExecuteAsync("INSERT INTO bodies.body_members (id, body_id, user_id, role, is_voting, start_date, alternate_for_member_id) VALUES (@id, @body, @alternate, 'alternate', false, (now() AT TIME ZONE 'Asia/Riyadh')::date - 30, @principal)",
                 new { id = Guid.CreateVersion7(), body, alternate, principal = memberIds[member] });
 
             var body2 = Guid.CreateVersion7();
             await tx.ExecuteAsync("""
                 INSERT INTO bodies.bodies (id, code, reference_no, body_type, name_ar, name_en, objective_ar, classification, status, created_by, term_start, term_end)
                 VALUES (@body2, 'URBAN-WT', @ref, 'working_team', 'فريق عمل المرصد الحضري (تجريبي)', 'Urban Observatory Working Team (sample)',
-                        'إعداد مؤشرات المرصد الحضري', 'restricted', 'draft', @gov, current_date, current_date + 180)
+                        'إعداد مؤشرات المرصد الحضري', 'restricted', 'draft', @gov, (now() AT TIME ZONE 'Asia/Riyadh')::date, (now() AT TIME ZONE 'Asia/Riyadh')::date + 180)
                 """, new { body2, gov, @ref = $"BOD-{y}-0002" });
-            await tx.ExecuteAsync("INSERT INTO bodies.body_terms (id, body_id, change_type, term_start, term_end, created_by) VALUES (@id, @body2, 'initial', current_date, current_date + 180, @gov)",
+            await tx.ExecuteAsync("INSERT INTO bodies.body_terms (id, body_id, change_type, term_start, term_end, created_by) VALUES (@id, @body2, 'initial', (now() AT TIME ZONE 'Asia/Riyadh')::date, (now() AT TIME ZONE 'Asia/Riyadh')::date + 180, @gov)",
                 new { id = Guid.CreateVersion7(), body2, gov });
             await tx.ExecuteAsync("""
                 INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule)
-                VALUES (@pid, @body2, 1, current_date, '{"type":"majority"}', '{"threshold":"majority_of_votes_cast"}', '{"required":false}', '{"levels":[]}')
+                VALUES (@pid, @body2, 1, (now() AT TIME ZONE 'Asia/Riyadh')::date, '{"type":"majority"}', '{"threshold":"majority_of_votes_cast"}', '{"required":false}', '{"levels":[]}')
                 """, new { pid = Guid.CreateVersion7(), body2 });
             await tx.ExecuteAsync("INSERT INTO config.numbering_sequences (scope_key, year, last_value) VALUES ('body', @y, 2) ON CONFLICT (scope_key, year) DO UPDATE SET last_value = GREATEST(config.numbering_sequences.last_value, 2)", new { y });
 
@@ -191,7 +191,7 @@ internal static class SampleData
                 await tx.ExecuteAsync("""
                     INSERT INTO tasks.tasks (id, body_id, reference_no, title_ar, assignee_type, assignee_user_id, assignee_org_unit_id, assignee_external_entity_id,
                       accountable_user_id, original_due_date, due_date, status, progress_pct, created_by, assigned_at, started_at, executing_org_unit_id)
-                    VALUES (@id, @body, @ref, @Title, @Type, @User, @Unit, @Entity, @Acc, current_date + @Days::int, current_date + @Days::int, @Status, @pct, @sec,
+                    VALUES (@id, @body, @ref, @Title, @Type, @User, @Unit, @Entity, @Acc, (now() AT TIME ZONE 'Asia/Riyadh')::date + @Days::int, (now() AT TIME ZONE 'Asia/Riyadh')::date + @Days::int, @Status, @pct, @sec,
                       now() - interval '20 days', CASE WHEN @Status = 'in_progress' THEN now() - interval '10 days' END,
                       COALESCE(@Unit::uuid, (SELECT org_unit_id FROM iam.users WHERE id = @User::uuid)))
                     """, new { id = Guid.CreateVersion7(), body, @ref = $"DTC-T-{year}-{n:0000}", t.Title, t.Type, t.User, t.Unit, t.Entity, t.Acc, t.Days, t.Status,

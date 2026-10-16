@@ -550,10 +550,18 @@ public sealed class Phase3Suite(TestContext ctx)
         var sec = await As("sec");
         await Check.Problem(await sec.PostAsync($"/api/v1/ai/minutes/{_minutes}/summary"), 404, "feature-disabled", "الذكاء الاصطناعي مرفوض من الخادم");
         var admin = ctx.AdminClient!;
+        // تفعيل الوحدة بنوع يتطلب مزوّدًا معتمدًا لم يُربط بعد: يعمل البديل ويوثّق السبب (المزوّد المعتمد غير منفذ — Q-09)
+        var flags = await admin.GetJsonAsync("/api/v1/features");
+        var provider = flags["E_SIGNATURE_PROVIDER"]!["value"]!.GetValue<string>();
+        Check.Equal("in_app_approval", flags["E_SIGNATURE_METHOD"]!["value"]!.GetValue<string>(), "النوع الافتراضي: موافقة موثقة داخل النظام");
+        await Check.Status(await admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_METHOD", new { value = "pdf_digital_signature", reason = "تجربة نوع يتطلب مزوّدًا", confirmImpact = true }), 200, "النوع");
+        await Check.Status(await admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_PROVIDER", new { value = "national_provider", reason = "مزوّد معتمد غير مربوط", confirmImpact = true }), 200, "المزوّد");
         await Check.Status(await admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_ENABLED", new { value = "true", reason = "تجربة التفعيل قبل ربط المزود" }), 200, "تفعيل التوقيع");
         var m = await (await As("bsec")).GetJsonAsync($"/api/v1/minutes/{_boardMinutes}");
-        Check.Equal("esign_not_integrated", m["signatureMethod"]!.S("reason"), "مفعّل وغير مربوط: يعمل البديل ويوثّق السبب");
+        Check.Equal("esign_provider_not_integrated", m["signatureMethod"]!.S("reason"), "مفعّل والمزوّد غير مربوط: يعمل البديل ويوثّق السبب");
         await Check.Status(await admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_ENABLED", new { value = "false", reason = "إعادة التعطيل بعد التجربة", confirmImpact = true }), 200, "إعادة التعطيل");
+        await Check.Status(await admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_PROVIDER", new { value = provider, reason = "إرجاع المزوّد", confirmImpact = true }), 200, "إرجاع المزوّد");
+        await Check.Status(await admin.PutAsync("/api/v1/admin/features/E_SIGNATURE_METHOD", new { value = "in_app_approval", reason = "إرجاع النوع الافتراضي", confirmImpact = true }), 200, "إرجاع النوع");
         // إعادة الذكاء الاصطناعي كما كان قبل المرحلة 3 (تختبر الاستمرارية بعد إعادة التشغيل)
         await Check.Status(await admin.PutAsync("/api/v1/admin/features/AI_ENABLED", new { value = "true", reason = "إعادة الحالة بعد اختبارات المرحلة 3" }), 200, "إعادة AI");
         var activity = (await sec.GetJsonAsync($"/api/v1/minutes/{_minutes}/activity")).AsArray();

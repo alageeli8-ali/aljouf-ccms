@@ -16,6 +16,7 @@
     <Project Path="Ccms.Modules.Org/Ccms.Modules.Org.csproj" />
     <Project Path="Ccms.Modules.Reporting/Ccms.Modules.Reporting.csproj" />
     <Project Path="Ccms.Modules.Resolutions/Ccms.Modules.Resolutions.csproj" />
+    <Project Path="Ccms.Modules.Signatures/Ccms.Modules.Signatures.csproj" />
     <Project Path="Ccms.Modules.Tasks/Ccms.Modules.Tasks.csproj" />
   </Folder>
   <Folder Name="/tests/">

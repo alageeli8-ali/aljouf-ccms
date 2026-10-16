@@ -146,7 +146,7 @@ internal sealed class EscalationService(Db db, IBodyPolicyQuery policies, INotif
                     break;
                 case "governance_officer" or "executive":
                     await AddAsync(await tx.QueryAsync("""
-                        SELECT DISTINCT user_id FROM iam.system_role_assignments WHERE role_code = @role AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                        SELECT DISTINCT user_id FROM iam.system_role_assignments WHERE role_code = @role AND valid_from <= (now() AT TIME ZONE 'Asia/Riyadh')::date AND (valid_to IS NULL OR valid_to >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
                         """, new { role }, r => r.GetGuid(0), ct), role);
                     break;
             }

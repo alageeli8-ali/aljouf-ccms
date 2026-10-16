@@ -26,6 +26,7 @@ public sealed class IamModule : IModule
         services.AddScoped<IUserQuery, UserQuery>();
         services.AddScoped<SessionService>();
         services.AddScoped<LocalLoginService>();
+        services.AddScoped<IReauthenticator, Reauthenticator>();
         services.AddSingleton<EntraSsoConnector>();
         services.AddSingleton<IConnector>(sp => sp.GetRequiredService<EntraSsoConnector>());
         services.AddHttpClient("sso", c => c.Timeout = TimeSpan.FromSeconds(15));
@@ -207,7 +208,7 @@ public sealed class IamModule : IModule
         SELECT u.*, o.name_ar AS org_unit_name, e.name_ar AS entity_name,
                EXISTS (SELECT 1 FROM iam.local_credentials c WHERE c.user_id = u.id) AS has_local_password,
                COALESCE((SELECT array_agg(DISTINCT a.role_code ORDER BY a.role_code) FROM iam.system_role_assignments a
-                         WHERE a.user_id = u.id AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)), '{}') AS system_roles
+                         WHERE a.user_id = u.id AND a.valid_from <= (now() AT TIME ZONE 'Asia/Riyadh')::date AND (a.valid_to IS NULL OR a.valid_to >= (now() AT TIME ZONE 'Asia/Riyadh')::date)), '{}') AS system_roles
         FROM iam.users u
         LEFT JOIN org.org_units o ON o.id = u.org_unit_id
         LEFT JOIN org.external_entities e ON e.id = u.external_entity_id
@@ -223,7 +224,7 @@ public sealed class IamModule : IModule
             WHERE (@q::text IS NULL OR u.email ILIKE @q OR u.display_name_ar ILIKE @q OR u.display_name_en ILIKE @q)
               AND (@status::text IS NULL OR u.status = @status)
               AND (@role::text IS NULL OR EXISTS (SELECT 1 FROM iam.system_role_assignments a WHERE a.user_id = u.id AND a.role_code = @role
-                     AND (a.valid_to IS NULL OR a.valid_to >= current_date)))
+                     AND (a.valid_to IS NULL OR a.valid_to >= (now() AT TIME ZONE 'Asia/Riyadh')::date)))
             """;
         var total = await db.ScalarAsync<long>("SELECT count(*) FROM iam.users u " + "\n" + where, args, ct);
         var items = await db.QueryAsync(UserSelect + "\n" + where + " ORDER BY u.display_name_ar LIMIT @limit OFFSET @offset", args, MapUser, ct);
@@ -299,7 +300,7 @@ public sealed class IamModule : IModule
         {
             var current = await tx.QueryAsync("""
                 SELECT role_code FROM iam.system_role_assignments
-                WHERE user_id = @id AND (valid_to IS NULL OR valid_to >= current_date) FOR UPDATE
+                WHERE user_id = @id AND (valid_to IS NULL OR valid_to >= (now() AT TIME ZONE 'Asia/Riyadh')::date) FOR UPDATE
                 """, new { id }, r => r.GetString(0), ct);
             if (await tx.ScalarAsync<int>("SELECT count(*) FROM iam.users WHERE id = @id", new { id }, ct) == 0) throw new NotFoundException();
             if (req.Roles.Contains(Roles.ExternalRepresentative)
@@ -309,8 +310,8 @@ public sealed class IamModule : IModule
             var add = req.Roles.Except(current).Distinct().ToArray();
             if (remove.Length > 0)
                 await tx.ExecuteAsync("""
-                    UPDATE iam.system_role_assignments SET valid_to = current_date - 1
-                    WHERE user_id = @id AND role_code = ANY(@remove::text[]) AND (valid_to IS NULL OR valid_to >= current_date)
+                    UPDATE iam.system_role_assignments SET valid_to = (now() AT TIME ZONE 'Asia/Riyadh')::date - 1
+                    WHERE user_id = @id AND role_code = ANY(@remove::text[]) AND (valid_to IS NULL OR valid_to >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
                     """, new { id, remove }, ct);
             foreach (var role in add)
                 await tx.ExecuteAsync("INSERT INTO iam.system_role_assignments (id, user_id, role_code, granted_by, reason) VALUES (@rid, @id, @role, @by, @reason)",

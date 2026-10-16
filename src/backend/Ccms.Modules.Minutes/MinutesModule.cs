@@ -25,6 +25,7 @@ public sealed class MinutesModule : IModule
         // وحدة التوقيع (المرحلة 6) تسجل بوابتها الفعلية؛ حتى ذلك يعمل المسار البديل المحدد في سياسة الجهة
         services.TryAddScoped<ISignatureGateway, PendingSignatureGateway>();
         services.AddScoped<MinutesService>();
+        services.AddScoped<IMinutesSignatureSink, MinutesSignatureSink>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder api)

@@ -90,7 +90,7 @@ internal static class TaskData
         if (t.AssigneeEntityId is { } entity && portalEnabled)
             list.AddRange(await sql.QueryAsync("""
                 SELECT u.id FROM iam.users u JOIN iam.system_role_assignments a ON a.user_id = u.id AND a.role_code = 'external_representative'
-                  AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                  AND a.valid_from <= (now() AT TIME ZONE 'Asia/Riyadh')::date AND (a.valid_to IS NULL OR a.valid_to >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
                 WHERE u.external_entity_id = @entity AND u.status = 'active'
                 """, new { entity }, r => r.GetGuid(0), ct));
         return [.. list.Distinct()];
@@ -124,7 +124,7 @@ internal static class TaskData
     public static Task<List<Guid>> BodyRoleUsersAsync(ISql sql, Guid bodyId, string[] roles, CancellationToken ct) =>
         sql.QueryAsync("""
             SELECT DISTINCT user_id FROM bodies.body_members WHERE body_id = @bodyId AND status = 'active' AND role = ANY(@roles::text[])
-              AND start_date <= current_date AND (end_date IS NULL OR end_date >= current_date)
+              AND start_date <= (now() AT TIME ZONE 'Asia/Riyadh')::date AND (end_date IS NULL OR end_date >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
             """, new { bodyId, roles }, r => r.GetGuid(0), ct);
 
     /// <summary>إضافة أيام عمل (الجمعة والسبت عطلة) أو أيام تقويمية حسب قاعدة الجهة.</summary>

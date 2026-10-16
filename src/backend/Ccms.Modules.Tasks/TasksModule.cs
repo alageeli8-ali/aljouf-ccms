@@ -252,7 +252,7 @@ public sealed class TasksModule : IModule
             case "member":
                 if (await tx.ScalarAsync<long>("""
                     SELECT count(*) FROM bodies.body_members WHERE body_id = @bodyId AND user_id = @userId AND status = 'active'
-                      AND start_date <= current_date AND (end_date IS NULL OR end_date >= current_date)
+                      AND start_date <= (now() AT TIME ZONE 'Asia/Riyadh')::date AND (end_date IS NULL OR end_date >= (now() AT TIME ZONE 'Asia/Riyadh')::date)
                     """, new { bodyId, userId }, ct) == 0)
                     throw AppValidationException.For("assigneeUserId", "المكلف ليس عضوًا ساريًا في هذه الجهة");
                 return new(null, await tx.ScalarAsync<Guid?>("SELECT org_unit_id FROM iam.users WHERE id = @userId", new { userId }, ct), null, null);
@@ -530,7 +530,7 @@ public sealed class TasksModule : IModule
     private static async Task<List<Guid>> ApproversAsync(ISql tx, Guid bodyId, CancellationToken ct)
     {
         var approver = await tx.ScalarAsync<string>("""
-            SELECT extension_approver FROM bodies.body_policies WHERE body_id = @bodyId AND effective_from <= current_date ORDER BY effective_from DESC, version DESC LIMIT 1
+            SELECT extension_approver FROM bodies.body_policies WHERE body_id = @bodyId AND effective_from <= (now() AT TIME ZONE 'Asia/Riyadh')::date ORDER BY effective_from DESC, version DESC LIMIT 1
             """, new { bodyId }, ct) ?? "secretary";
         var list = await TaskData.BodyRoleUsersAsync(tx, bodyId, approver == "chair" ? ["chair"] : ["chair", "secretary"], ct);
         list.AddRange(await tx.QueryAsync("""

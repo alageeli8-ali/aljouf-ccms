@@ -16,7 +16,7 @@ public sealed class RestartSuite(TestContext ctx)
         Check.Equal("true", V("AI_ENABLED"), "AI_ENABLED المخزنة");
         Check.Equal("true", V("AI_MINUTES_SUMMARY_ENABLED"), "AI_MINUTES_SUMMARY_ENABLED");
         Check.Equal("false", V("E_SIGNATURE_ENABLED"), "E_SIGNATURE_ENABLED");
-        Check.Equal("sandbox", V("E_SIGNATURE_PROVIDER"), "E_SIGNATURE_PROVIDER");
+        Check.Equal("mock", V("E_SIGNATURE_PROVIDER"), "E_SIGNATURE_PROVIDER");
         Check.Equal("false", V("EXTERNAL_PORTAL_ENABLED"), "EXTERNAL_PORTAL_ENABLED");
         var h = await ctx.AdminClient!.GetJsonAsync("/api/v1/admin/features/history");
         Check.Equal(ctx.HistoryCountBeforeRestart, h["total"]!.GetValue<long>(), "سجل التغييرات كامل بعد إعادة التشغيل");
