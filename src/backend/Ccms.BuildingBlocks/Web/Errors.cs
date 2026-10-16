@@ -41,6 +41,9 @@ public sealed class ProviderUnavailableException(string connector, string status
     : AppException("provider-unavailable", 503, $"الخاصية مفعلة لكن مزوّد الخدمة ({connector}) غير متاح: {status}",
         new Dictionary<string, object?> { ["connector"] = connector, ["connectorStatus"] = status });
 
+/// <summary>رفض بسبب سياسة بنوع محدد (403)، مثل اشتراط تغيير كلمة المرور أو تعطيل البوابة.</summary>
+public sealed class AccessDeniedException(string code, string message) : AppException(code, 403, message);
+
 public sealed class UnauthenticatedException(string message = "يلزم تسجيل الدخول") : AppException("unauthenticated", 401, message);
 
 public sealed class AppExceptionHandler(ILogger<AppExceptionHandler> logger, IProblemDetailsService problems) : IExceptionHandler

@@ -38,10 +38,13 @@ public sealed class DocumentsModule : IModule
         g.MapGet("/", List);
         g.MapPost("/", Upload).DisableAntiforgery();
         g.MapGet("/{id:guid}/content", Download);
+        g.MapPost("/{id:guid}/share", Share).Validate<ShareRequest>();
     }
 
     private static readonly string[] OwnerTypes = ["body", "meeting", "agenda_item", "minutes", "resolution", "task"];
-    private static readonly string[] Purposes = ["formation_decision", "agenda_memo", "attachment", "evidence", "wet_signature", "approval_evidence"];
+    private static readonly string[] Purposes = ["formation_decision", "agenda_memo", "attachment", "evidence", "wet_signature", "approval_evidence", "deliverable"];
+
+    public sealed record ShareRequest([property: System.ComponentModel.DataAnnotations.Required] Guid? TaskId, bool Share);
 
     private static Scope OwnerScope(string type, Guid id) => type switch
     {
@@ -56,15 +59,33 @@ public sealed class DocumentsModule : IModule
     {
         if (!OwnerTypes.Contains(ownerType)) throw AppValidationException.For("ownerType", "نوع مالك غير معروف");
         await access.DemandAsync(ViewPermission(ownerType), OwnerScope(ownerType, ownerId), ct);
+        var portalOnly = ownerType == "task" && await access.IsPortalOnlyAsync(ownerId, ct);
         return Results.Ok(await db.QueryAsync("""
-            SELECT d.id, d.file_name, d.content_type, d.size_bytes, d.sha256, d.classification, d.scan_status, d.uploaded_at, u.display_name_ar, l.purpose
+            SELECT d.id, d.file_name, d.content_type, d.size_bytes, d.sha256, d.classification, d.scan_status, d.uploaded_at, u.display_name_ar, l.purpose, l.external_visible
             FROM docs.document_links l JOIN docs.documents d ON d.id = l.document_id JOIN iam.users u ON u.id = d.uploaded_by
-            WHERE l.owner_type = @ownerType AND l.owner_id = @ownerId AND d.deleted_at IS NULL ORDER BY d.uploaded_at DESC
-            """, new { ownerType, ownerId }, r => new
+            WHERE l.owner_type = @ownerType AND l.owner_id = @ownerId AND d.deleted_at IS NULL AND (NOT @portalOnly::boolean OR l.external_visible)
+            ORDER BY d.uploaded_at DESC
+            """, new { ownerType, ownerId, portalOnly }, r => new
         {
             id = r.GetGuid(0), fileName = r.GetString(1), contentType = r.GetString(2), sizeBytes = r.GetInt64(3), sha256 = r.GetString(4),
             classification = r.GetString(5), scanStatus = r.GetString(6), uploadedAt = r.GetDateTime(7), uploadedBy = r.GetString(8), purpose = r.GetString(9),
+            sharedWithEntity = r.GetBoolean(10),
         }, ct));
+    }
+
+    /// <summary>مشاركة مستند مهمة مع الجهة الخارجية المكلفة أو إلغاء مشاركته؛ لمن يدير المهمة أو يتابعها من الداخل فقط.</summary>
+    private static async Task<IResult> Share(Guid id, ShareRequest req, Db db, IAccessService access, ICurrentUser me, IAuditWriter audit, CancellationToken ct)
+    {
+        var taskId = req.TaskId!.Value;
+        await access.DemandAsync(Permissions.TaskUpdate, Scope.Task(taskId), ct);
+        if (await access.IsPortalOnlyAsync(taskId, ct)) throw new ForbiddenException();
+        var perms = await access.GetPermissionsAsync(Scope.Task(taskId), ct);
+        if (!perms.Contains(Permissions.TaskManage) && !perms.Contains(Permissions.TaskRecordExternal)) throw new ForbiddenException(permission: Permissions.TaskManage);
+        var n = await db.ExecuteAsync("UPDATE docs.document_links SET external_visible = @Share WHERE document_id = @id AND owner_type = 'task' AND owner_id = @taskId",
+            new { id, taskId, req.Share }, ct);
+        if (n == 0) throw new NotFoundException();
+        await audit.WriteAsync(new AuditEntry("DOC", req.Share ? "document.shared_with_entity" : "document.unshared", "document", id.ToString(), After: new { taskId }), ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> Upload(HttpRequest request, Db db, IAccessService access, ICurrentUser me, IAuditWriter audit,
@@ -78,6 +99,8 @@ public sealed class DocumentsModule : IModule
         if (!Guid.TryParse(form["ownerId"], out var ownerId)) throw AppValidationException.For("ownerId", "معرّف المالك غير صالح");
         if (!Purposes.Contains(purpose)) throw AppValidationException.For("purpose", "غرض غير مسموح");
         await access.DemandAsync(ownerType == "task" ? Permissions.TaskUpdate : Permissions.DocumentUpload, OwnerScope(ownerType, ownerId), ct);
+        // ما ترفعه الجهة الخارجية عبر البوابة مشارك معها تلقائيًا؛ وما يرفعه الداخل لا يُشارك إلا صراحة
+        var externalVisible = ownerType == "task" && (await access.IsPortalOnlyAsync(ownerId, ct) || form["shareWithEntity"].ToString() == "true");
 
         var file = form.Files.GetFile("file") ?? throw AppValidationException.For("file", "الملف مطلوب");
         var o = options.Value;
@@ -112,9 +135,10 @@ public sealed class DocumentsModule : IModule
                     INSERT INTO docs.documents (id, file_name, content_type, size_bytes, sha256, storage_key, uploaded_by)
                     VALUES (@id, @name, @type, @size, @sha, @key, @by)
                     """, new { id, name = System.IO.Path.GetFileName(file.FileName), type = file.ContentType, size = file.Length, sha, key, by = me.UserId }, ct);
-                await tx.ExecuteAsync("INSERT INTO docs.document_links (id, document_id, owner_type, owner_id, purpose) VALUES (@lid, @id, @ownerType, @ownerId, @purpose)",
-                    new { lid = Guid.CreateVersion7(), id, ownerType, ownerId, purpose }, ct);
-                await audit.WriteAsync(tx, new AuditEntry("DOC", "document.uploaded", "document", id.ToString(), After: new { ownerType, ownerId, purpose, sha, size = file.Length }), ct);
+                await tx.ExecuteAsync("""
+                    INSERT INTO docs.document_links (id, document_id, owner_type, owner_id, purpose, external_visible) VALUES (@lid, @id, @ownerType, @ownerId, @purpose, @externalVisible)
+                    """, new { lid = Guid.CreateVersion7(), id, ownerType, ownerId, purpose, externalVisible }, ct);
+                await audit.WriteAsync(tx, new AuditEntry("DOC", "document.uploaded", "document", id.ToString(), After: new { ownerType, ownerId, purpose, sha, size = file.Length, externalVisible }), ct);
             }, ct);
         }
         catch
@@ -122,7 +146,7 @@ public sealed class DocumentsModule : IModule
             File.Delete(full);
             throw;
         }
-        return Results.Created($"/api/v1/documents/{id}/content", new { id, sha256 = sha, scanStatus = "not_scanned" });
+        return Results.Created($"/api/v1/documents/{id}/content", new { id, sha256 = sha, scanStatus = "not_scanned", sharedWithEntity = externalVisible });
     }
 
     private static async Task<IResult> Download(Guid id, Db db, IAccessService access, IAuditWriter audit, IOptions<StorageOptions> options,
@@ -142,8 +166,8 @@ public sealed class DocumentsModule : IModule
 internal sealed class DocumentOwnerQuery(Db db) : IDocumentOwnerQuery
 {
     public async Task<IReadOnlyList<DocumentOwner>> GetOwnersAsync(Guid documentId, CancellationToken ct = default) =>
-        await db.QueryAsync("SELECT owner_type, owner_id FROM docs.document_links WHERE document_id = @documentId", new { documentId },
-            r => new DocumentOwner(r.GetString(0), r.GetGuid(1)), ct);
+        await db.QueryAsync("SELECT owner_type, owner_id, external_visible FROM docs.document_links WHERE document_id = @documentId", new { documentId },
+            r => new DocumentOwner(r.GetString(0), r.GetGuid(1), r.GetBoolean(2)), ct);
 }
 
 /// <summary>حفظ المستندات التي يولّدها النظام (PDF المحضر المعتمد) بالمنفذ نفسه وببصمة SHA-256.</summary>

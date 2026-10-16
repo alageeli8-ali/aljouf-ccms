@@ -51,6 +51,7 @@ public sealed class IamModule : IModule
         auth.MapPost("/login", Login).AllowAnonymous().Validate<LoginRequest>().RequireRateLimiting("login");
         auth.MapPost("/logout", Logout);
         auth.MapPost("/logout-all", LogoutAll);
+        auth.MapPost("/password", ChangePassword).Validate<ChangePasswordRequest>();
 
         api.MapGet("/me", Me).WithTags("Auth");
 
@@ -94,6 +95,14 @@ public sealed class IamModule : IModule
         return Results.Ok(new { userId = id, displayName = name });
     }
 
+    internal static async Task<IResult> ChangePassword(ChangePasswordRequest req, ICurrentUser user, LocalLoginService local, IAccessService access, CancellationToken ct)
+    {
+        if (!user.IsAuthenticated) throw new UnauthenticatedException();
+        await local.ChangeAsync(user.UserId, req, ct);
+        access.Invalidate(user.UserId);
+        return Results.NoContent();
+    }
+
     internal static async Task<IResult> Logout(HttpContext http, ICurrentUser user, SessionService sessions, IAuditWriter audit, CancellationToken ct)
     {
         if (user.SessionId is { } sid) await sessions.RevokeAsync(sid, "logout", ct);
@@ -110,25 +119,30 @@ public sealed class IamModule : IModule
         return Results.Ok(new { revokedSessions = n });
     }
 
-    internal static async Task<IResult> Me(ICurrentUser user, Db db, IAccessService access, IBodyMembershipQuery memberships, IClock clock, CancellationToken ct)
+    internal static async Task<IResult> Me(ICurrentUser user, Db db, IAccessService access, IBodyMembershipQuery memberships, IClock clock, IFeatureService features, CancellationToken ct)
     {
         var u = await db.QuerySingleAsync("""
             SELECT u.id, u.email, u.display_name_ar, u.display_name_en, u.job_title, u.preferred_language, u.preferred_calendar,
-                   u.external_entity_id, e.name_ar AS entity_name
-            FROM iam.users u LEFT JOIN org.external_entities e ON e.id = u.external_entity_id
+                   u.external_entity_id, e.name_ar AS entity_name, u.user_type, COALESCE(c.must_change, false) AS must_change
+            FROM iam.users u LEFT JOIN org.external_entities e ON e.id = u.external_entity_id LEFT JOIN iam.local_credentials c ON c.user_id = u.id
             WHERE u.id = @id
             """, new { id = user.UserId }, r => new
         {
             id = r.GetGuid(0), email = r.GetString(1), displayNameAr = r.GetString(2), displayNameEn = r.Str("display_name_en"),
             jobTitle = r.Str("job_title"), language = r.GetString(5), calendar = r.GetString(6),
             externalEntityId = r.Uuid("external_entity_id"), externalEntityName = r.Str("entity_name"),
+            userType = r.GetString(9), mustChangePassword = r.GetBoolean(10),
         }, ct) ?? throw new UnauthenticatedException();
         var bodyRoles = await memberships.GetActiveRolesAsync(user.UserId, clock.TodayLocal, ct);
+        var systemRoles = await access.GetSystemRolesAsync(user.UserId, ct);
         return Results.Ok(new
         {
             user = u,
-            systemRoles = await access.GetSystemRolesAsync(user.UserId, ct),
+            systemRoles,
             bodyRoles,
+            // مستخدم البوابة: ممثل جهة خارجية بلا عضوية داخلية؛ تُعرض له واجهة البوابة فقط
+            portalUser = systemRoles.Contains(Roles.ExternalRepresentative) && u.userType == "external" && bodyRoles.Count == 0,
+            portalEnabled = await features.IsEnabledAsync(FeatureKeys.ExternalPortalEnabled, ct),
             permissions = (await access.GetPermissionsAsync(Scope.System, ct)).Order(),
         });
     }

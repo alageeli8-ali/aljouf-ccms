@@ -40,6 +40,8 @@ public static class Permissions
         MinutesView = "minutes.view", MinutesEdit = "minutes.edit", MinutesSign = "minutes.sign", MinutesApprove = "minutes.approve",
         ResolutionView = "resolution.view", ResolutionManage = "resolution.manage",
         TaskView = "task.view", TaskManage = "task.manage", TaskUpdate = "task.update", TaskVerify = "task.verify",
+        TaskComment = "task.comment", TaskExtensionApprove = "task.extension.approve", TaskEscalate = "task.escalate",
+        TaskRecordExternal = "task.record_external", TaskLettersManage = "task.letters.manage", TaskWorkflowManage = "task.workflow.manage",
         DocumentView = "document.view", DocumentUpload = "document.upload", ReportsBody = "reports.body",
         PortalAccess = "portal.access",
         BodyLifecycle = "body.lifecycle.manage", BodyPolicy = "body.policy.manage", BodyDelegate = "body.delegate",
@@ -84,6 +86,9 @@ public interface IAccessService
     Task<IReadOnlySet<string>> GetPermissionsAsync(Scope scope, CancellationToken ct = default);
     Task<BodyFilter> GetBodyFilterAsync(string permission, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetSystemRolesAsync(Guid userId, CancellationToken ct = default);
+    /// <summary>صحيح إن كان اطلاع المستخدم على المهمة عبر بوابة الجهات الخارجية فقط (لا عضوية ولا علاقة داخلية).
+    /// يرى حينها البطاقة المقيدة والمستندات المشاركة صراحة فقط.</summary>
+    Task<bool> IsPortalOnlyAsync(Guid taskId, CancellationToken ct = default);
     void Invalidate(Guid userId);
 }
 
@@ -94,7 +99,9 @@ public interface IBodyMembershipQuery
     Task<IReadOnlyList<BodyRole>> GetActiveRolesAsync(Guid userId, DateOnly on, CancellationToken ct = default);
 }
 
-public sealed record TaskRelation(Guid TaskId, Guid BodyId, Guid? AssigneeUserId, Guid? AccountableUserId, Guid? AssigneeOrgUnitManagerId, Guid? AssigneeExternalEntityId);
+/// <summary>أطراف المهمة لتقييم الصلاحية: المنفذ (المكلَّف أو المنفذ المسمى أو مدير الإدارة المكلفة أو ممثل الجهة)، ومسؤول المتابعة، والمتحقق.</summary>
+public sealed record TaskRelation(Guid TaskId, Guid BodyId, Guid? AssigneeUserId, Guid? AccountableUserId, Guid? AssigneeOrgUnitManagerId, Guid? AssigneeExternalEntityId,
+    Guid? ExecutorUserId = null, Guid? VerifierUserId = null, Guid? ExecutingUnitManagerId = null);
 
 public interface ITaskRelationQuery
 {
@@ -108,7 +115,7 @@ public interface IRecordBodyResolver
     Task<Guid?> ResolveBodyAsync(Guid recordId, CancellationToken ct = default);
 }
 
-public sealed record DocumentOwner(string OwnerType, Guid OwnerId);
+public sealed record DocumentOwner(string OwnerType, Guid OwnerId, bool ExternalVisible = false);
 
 public interface IDocumentOwnerQuery
 {

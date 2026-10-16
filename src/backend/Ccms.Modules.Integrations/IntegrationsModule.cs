@@ -68,6 +68,7 @@ public sealed class IntegrationsModule : IModule
         services.AddSingleton<IConnector, EmailConnector>();
         services.AddSingleton<IConnector, CorrespondenceConnector>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<ICorrespondenceGateway, CorrespondenceGateway>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
@@ -241,4 +242,21 @@ internal sealed class SmtpEmailSender(IOptions<IntegrationOptions> options) : IE
         using var msg = new MailMessage(o.From, to, subject, htmlBody) { IsBodyHtml = true, BodyEncoding = System.Text.Encoding.UTF8, SubjectEncoding = System.Text.Encoding.UTF8 };
         await client.SendMailAsync(msg, ct);
     }
+}
+
+/// <summary>بوابة نظام المراسلات: جاهزة فقط بتفعيل الخاصية، وموصل سليم، ومحوّل إرسال مطابق لواجهة النظام المعتمدة.
+/// واجهة الإرسال في نظام المراسلات لم تُوثق بعد (Q-07)، فلا يوجد محوّل إرسال، ولا يُدّعى إرسال أي خطاب.</summary>
+internal sealed class CorrespondenceGateway(IFeatureService features, IConnectorStatusStore status) : ICorrespondenceGateway
+{
+    public async Task<(bool Ready, string Reason)> ReadinessAsync(CancellationToken ct = default)
+    {
+        if (!await features.IsEnabledAsync(FeatureKeys.CorrespondenceIntegrationEnabled, ct)) return (false, "integration_disabled");
+        var health = await status.GetAsync("correspondence", ct);
+        if (health is null || health.State == ConnectorState.NotConfigured) return (false, "connector_not_configured");
+        if (health.State != ConnectorState.Healthy) return (false, "connector_unavailable");
+        return (false, "send_api_not_documented");
+    }
+
+    public Task<string> SubmitAsync(CorrespondenceLetter letter, CancellationToken ct = default) =>
+        throw new NotSupportedException("محوّل الإرسال إلى نظام المراسلات غير منفذ حتى توثيق واجهته واعتمادها");
 }

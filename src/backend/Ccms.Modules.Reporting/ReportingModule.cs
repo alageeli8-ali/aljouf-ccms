@@ -39,15 +39,16 @@ public sealed class ReportingModule : IModule
               (SELECT count(*) FROM meetings.meetings m WHERE m.status IN ('scheduled','agenda_published') AND m.starts_at >= now()
                  AND (@mAll::boolean OR m.body_id = ANY(@mIds::uuid[]))) AS upcoming_meetings,
               (SELECT count(*) FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id
-                 WHERE mi.status IN ('member_review','pending_signoffs','pending_approval') AND (@miAll::boolean OR m.body_id = ANY(@miIds::uuid[]))) AS minutes_in_progress,
+                 WHERE mi.status IN ('secretary_review','chair_review','member_review','pending_signatures','pending_final_approval','returned') AND (@miAll::boolean OR m.body_id = ANY(@miIds::uuid[]))) AS minutes_in_progress,
               (SELECT count(*) FROM resolutions.resolutions r WHERE r.status IN ('issued','in_execution') AND (@rAll::boolean OR r.body_id = ANY(@rIds::uuid[]))) AS open_resolutions,
-              (SELECT count(*) FROM tasks.tasks t WHERE t.status IN ('assigned','in_progress','returned','pending_verification')
+              (SELECT count(*) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE ws.category IN ('open','active','waiting','review')
                  AND (@tAll::boolean OR t.body_id = ANY(@tIds::uuid[]))) AS open_tasks,
-              (SELECT count(*) FROM tasks.tasks t WHERE t.status IN ('assigned','in_progress','returned') AND t.due_date < (now() AT TIME ZONE 'Asia/Riyadh')::date
-                 AND (@tAll::boolean OR t.body_id = ANY(@tIds::uuid[]))) AS overdue_tasks,
+              (SELECT count(*) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE ws.category IN ('open','active')
+                 AND t.due_date < (now() AT TIME ZONE 'Asia/Riyadh')::date AND (@tAll::boolean OR t.body_id = ANY(@tIds::uuid[]))) AS overdue_tasks,
               (SELECT count(*) FROM tasks.tasks t WHERE t.status = 'completed' AND (@tAll::boolean OR t.body_id = ANY(@tIds::uuid[]))) AS completed_tasks,
-              (SELECT count(*) FROM tasks.tasks t WHERE (t.assignee_user_id = @me OR t.accountable_user_id = @me)
-                 AND t.status IN ('assigned','in_progress','returned')) AS my_open_tasks,
+              (SELECT count(*) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
+                 WHERE (t.assignee_user_id = @me OR t.executor_user_id = @me OR t.accountable_user_id = @me OR t.verifier_user_id = @me)
+                 AND ws.category IN ('open','active','waiting','review')) AS my_open_tasks,
               (SELECT count(*) FROM minutes.minutes_signoffs s WHERE s.user_id = @me AND s.status = 'requested') AS my_pending_signoffs
             """, new
         {
@@ -74,11 +75,11 @@ public sealed class ReportingModule : IModule
         var f = await access.GetBodyFilterAsync(Permissions.ReportsBody, ct);
         return Results.Ok(await db.QueryAsync("""
             SELECT b.id, b.code, b.name_ar,
-              count(t.id) FILTER (WHERE t.status NOT IN ('draft','cancelled')) AS total,
-              count(t.id) FILTER (WHERE t.status = 'completed') AS completed,
-              count(t.id) FILTER (WHERE t.status IN ('assigned','in_progress','returned','pending_verification')) AS open,
-              count(t.id) FILTER (WHERE t.status IN ('assigned','in_progress','returned') AND t.due_date < (now() AT TIME ZONE 'Asia/Riyadh')::date) AS overdue
-            FROM bodies.bodies b LEFT JOIN tasks.tasks t ON t.body_id = b.id
+              count(t.id) FILTER (WHERE ws.category NOT IN ('new','closed')) AS total,
+              count(t.id) FILTER (WHERE ws.category = 'done') AS completed,
+              count(t.id) FILTER (WHERE ws.category IN ('open','active','waiting','review')) AS open,
+              count(t.id) FILTER (WHERE ws.category IN ('open','active') AND t.due_date < (now() AT TIME ZONE 'Asia/Riyadh')::date) AS overdue
+            FROM bodies.bodies b LEFT JOIN tasks.tasks t ON t.body_id = b.id LEFT JOIN tasks.workflow_statuses ws ON ws.code = t.status
             WHERE (@all::boolean OR b.id = ANY(@ids::uuid[])) AND b.status <> 'archived'
             GROUP BY b.id, b.code, b.name_ar ORDER BY b.name_ar
             """, new { all = f.All, ids = f.BodyIds }, x => new

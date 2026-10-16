@@ -246,21 +246,24 @@ public sealed class Suite(TestContext ctx)
         await Check.Status(await mgr.PostAsync($"/api/v1/tasks/{id}/updates", new { progressPct = 10, note = "متابعة" }), 204, "تحديث المتابع");
     }
 
-    [Test("RBAC-07", "ممثل الجهة الخارجية: محجوب والبوابة معطلة، ويرى مهام جهته فقط عند التفعيل", 26)]
+    [Test("RBAC-07", "ممثل الجهة الخارجية: محجوب والبوابة معطلة، ويرى مهام جهته فقط ببطاقة البوابة بعد تغيير كلمة المرور المؤقتة", 26)]
     public async Task ExternalPortal()
     {
         using var ext = await As("extrep");
         await Check.Problem(await ext.GetAsync("/api/v1/portal/tasks"), 404, "feature-disabled", "البوابة معطلة");
         await Check.Problem(await ext.GetAsync($"/api/v1/tasks/{_taskEntity}"), 404, "not-found", "مهمة جهته والبوابة معطلة");
         await Check.Status(await Admin.PutAsync("/api/v1/admin/features/EXTERNAL_PORTAL_ENABLED", new { value = "true", reason = "تجربة البوابة" }), 200, "تفعيل");
+        await Check.Problem(await ext.GetAsync("/api/v1/portal/tasks"), 403, "password-change-required", "كلمة المرور المؤقتة");
+        await Check.Status(await ext.PostAsync("/api/v1/auth/password", new { currentPassword = Pw, newPassword = "Ext@Portal2026" }), 204, "تغيير كلمة المرور");
         var portal = await ext.GetJsonAsync("/api/v1/portal/tasks");
         Check.Equal(1, portal.Items().Count, "مهام جهته فقط");
-        await Check.Status(await ext.GetAsync($"/api/v1/tasks/{_taskEntity}"), 200, "مهمة جهته");
-        await Check.Status(await ext.PostAsync($"/api/v1/tasks/{_taskEntity}/updates", new { progressPct = 50, note = "تحديث من الجهة" }), 204, "تحديث");
-        await Check.Problem(await ext.GetAsync($"/api/v1/tasks/{_taskOtherEntity}"), 404, "not-found", "مهمة جهة أخرى");
+        await Check.Status(await ext.GetAsync($"/api/v1/portal/tasks/{_taskEntity}"), 200, "مهمة جهته في البوابة");
+        await Check.Problem(await ext.GetAsync($"/api/v1/tasks/{_taskEntity}"), 404, "not-found", "البطاقة الداخلية غير متاحة للجهة");
+        await Check.Status(await ext.PostAsync($"/api/v1/portal/tasks/{_taskEntity}/progress", new { progressPct = 50, note = "تحديث من الجهة" }), 200, "تحديث");
+        await Check.Problem(await ext.GetAsync($"/api/v1/portal/tasks/{_taskOtherEntity}"), 404, "not-found", "مهمة جهة أخرى");
         await Check.Problem(await ext.GetAsync($"/api/v1/bodies/{_bodyA}"), 404, "not-found", "الجهة نفسها");
-        await Check.Status(await Admin.PutAsync("/api/v1/admin/features/EXTERNAL_PORTAL_ENABLED", new { value = "false", reason = "إرجاع" }), 200, "تعطيل");
-        await Check.Problem(await ext.GetAsync($"/api/v1/tasks/{_taskEntity}"), 404, "not-found", "بعد التعطيل");
+        await Check.Status(await Admin.PutAsync("/api/v1/admin/features/EXTERNAL_PORTAL_ENABLED", new { value = "false", reason = "إرجاع", confirmImpact = true }), 200, "تعطيل");
+        await Check.Problem(await ext.GetAsync($"/api/v1/portal/tasks/{_taskEntity}"), 404, "feature-disabled", "بعد التعطيل");
     }
 
     [Test("RBAC-08", "صلاحية المستند مشتقة من مالكه (جهة/مهمة)", 27)]

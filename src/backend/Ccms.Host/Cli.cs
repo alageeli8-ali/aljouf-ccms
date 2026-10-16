@@ -180,8 +180,8 @@ internal static class SampleData
             var year = DateTime.UtcNow.Year;
             var tasks = new (string Title, string Type, Guid? User, Guid? Unit, Guid? Entity, Guid? Acc, int Days, string Status)[]
             {
-                ("إعداد كراسة الشروط لنظام الأرشفة", "user", executor, null, null, null, 14, "in_progress"),
-                ("تحديث سياسات أمن المعلومات", "org_unit", null, unitId, null, manager, -5, "assigned"),
+                ("إعداد كراسة الشروط لنظام الأرشفة", "employee", executor, null, null, sec, 14, "in_progress"),
+                ("تحديث سياسات أمن المعلومات", "org_unit", null, unitId, null, sec, -5, "assigned"),
                 ("تزويد المكتب ببيانات المرصد الحضري", "external_entity", null, null, entityId, sec, 20, "assigned"),
             };
             var n = 0;
@@ -190,8 +190,10 @@ internal static class SampleData
                 n++;
                 await tx.ExecuteAsync("""
                     INSERT INTO tasks.tasks (id, body_id, reference_no, title_ar, assignee_type, assignee_user_id, assignee_org_unit_id, assignee_external_entity_id,
-                      accountable_user_id, original_due_date, due_date, status, progress_pct, created_by)
-                    VALUES (@id, @body, @ref, @Title, @Type, @User, @Unit, @Entity, @Acc, current_date + @Days::int, current_date + @Days::int, @Status, @pct, @sec)
+                      accountable_user_id, original_due_date, due_date, status, progress_pct, created_by, assigned_at, started_at, executing_org_unit_id)
+                    VALUES (@id, @body, @ref, @Title, @Type, @User, @Unit, @Entity, @Acc, current_date + @Days::int, current_date + @Days::int, @Status, @pct, @sec,
+                      now() - interval '20 days', CASE WHEN @Status = 'in_progress' THEN now() - interval '10 days' END,
+                      COALESCE(@Unit::uuid, (SELECT org_unit_id FROM iam.users WHERE id = @User::uuid)))
                     """, new { id = Guid.CreateVersion7(), body, @ref = $"DTC-T-{year}-{n:0000}", t.Title, t.Type, t.User, t.Unit, t.Entity, t.Acc, t.Days, t.Status,
                     pct = t.Status == "in_progress" ? 40 : 0, sec });
             }

@@ -198,7 +198,7 @@ public sealed class Phase3Suite(TestContext ctx)
         var t = await Check.Status(await sec.PostOnceAsync("/api/v1/tasks", new
         { bodyId = _comm, resolutionId = _r["R1"], titleAr = "إعداد الخطة التنفيذية", assigneeType = "user", assigneeUserId = _u["m1"], dueDate = Today.AddDays(30) }, Key()), 201, "مهمة مسودة");
         _draftTask = t.G("id");
-        Check.Equal("draft", t.S("status"), "المهمة مسودة");
+        Check.Equal("new", t.S("status"), "المهمة جديدة حتى اعتماد المحضر");
         _draftTask4 = (await Check.Status(await sec.PostAsync("/api/v1/tasks", new
         { bodyId = _comm, resolutionId = _r["R4"], titleAr = "مهمة القرار المسحوب", assigneeType = "user", assigneeUserId = _u["m2"], dueDate = Today.AddDays(10) }), 201, "مهمة 4")).G("id");
         await Check.Status(await sec.PostAsync($"/api/v1/resolutions/{_r["R4"]}/withdraw", new { reason = "دُمج في القرار الأول" }), 204, "سحب القرار 4");

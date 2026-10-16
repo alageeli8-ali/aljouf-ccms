@@ -22,6 +22,7 @@ public sealed class ResolutionsModule : IModule
     {
         services.AddScoped<IRecordBodyResolver, ResolutionBodyResolver>();
         services.AddScoped<IResolutionIssuer, ResolutionIssuer>();
+        services.AddScoped<IResolutionExecutionHook, ResolutionExecutionHook>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
@@ -454,4 +455,32 @@ internal sealed class ResolutionBodyResolver(Db db) : IRecordBodyResolver
     public string RecordType => "resolution";
     public Task<Guid?> ResolveBodyAsync(Guid recordId, CancellationToken ct = default) =>
         db.ScalarAsync<Guid?>("SELECT body_id FROM resolutions.resolutions WHERE id = @recordId", new { recordId }, ct);
+}
+
+/// <summary>أثر المهام على القرار: بدء أول مهمة ينقل القرار الصادر إلى «قيد التنفيذ»، واكتمال كل مهامه يُشعر أمين السر لتسجيل التنفيذ
+/// (لا يُسجل التنفيذ آليًا: يبقى قرارًا بشريًا بإثبات).</summary>
+internal sealed class ResolutionExecutionHook(INotifier notifier, IAuditWriter audit) : IResolutionExecutionHook
+{
+    public async Task TaskStartedAsync(ISql tx, Guid resolutionId, Guid by, CancellationToken ct = default)
+    {
+        var n = await tx.ExecuteAsync("UPDATE resolutions.resolutions SET status = 'in_execution', updated_by = @by WHERE id = @resolutionId AND status = 'issued'",
+            new { resolutionId, by }, ct);
+        if (n == 0) return;
+        await ResolutionsModule.HistoryAsync(tx, resolutionId, "issued", "in_execution", "بدء تنفيذ أول مهمة مرتبطة", null, by, ct);
+        await audit.WriteAsync(tx, new AuditEntry("RES", "resolution.start_execution", "resolution", resolutionId.ToString(), After: new { source = "task_started" }, ActorUserId: by), ct);
+    }
+
+    public async Task TasksCompletedAsync(ISql tx, Guid resolutionId, Guid by, CancellationToken ct = default)
+    {
+        var r = await tx.QuerySingleAsync("SELECT body_id, number, title_ar, status FROM resolutions.resolutions WHERE id = @resolutionId", new { resolutionId },
+            x => (Body: x.GetGuid(0), Number: x.Str("number"), Title: x.GetString(2), Status: x.GetString(3)), ct);
+        if (r == default || r.Status is not ("issued" or "in_execution")) return;
+        var users = await tx.QueryAsync("""
+            SELECT DISTINCT user_id FROM bodies.body_members WHERE body_id = @b AND status = 'active' AND role IN ('secretary','chair')
+              AND start_date <= current_date AND (end_date IS NULL OR end_date >= current_date)
+            """, new { b = r.Body }, x => x.GetGuid(0), ct);
+        foreach (var u in users)
+            await notifier.NotifyAsync(tx, new NotificationRequest(u, "resolution_tasks_completed", $"اكتملت كل مهام القرار {r.Number}؛ سجّل تنفيذه",
+                $"All tasks of resolution {r.Number} completed", $"/resolutions/{resolutionId}", $"resolution_tasks_completed:{resolutionId}:{u}"), ct);
+    }
 }

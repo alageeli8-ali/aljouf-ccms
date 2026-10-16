@@ -159,15 +159,42 @@ internal sealed class SessionValidationEvents : CookieAuthenticationEvents
     }
 }
 
+public sealed record ChangePasswordRequest(
+    [property: Required(ErrorMessage = "كلمة المرور الحالية مطلوبة"), MaxLength(200)] string CurrentPassword,
+    [property: Required(ErrorMessage = "كلمة المرور الجديدة مطلوبة"), MinLength(10, ErrorMessage = "عشرة أحرف على الأقل"), MaxLength(200)] string NewPassword) : IValidatableObject
+{
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (!NewPassword.Any(char.IsLetter) || !NewPassword.Any(char.IsDigit) || NewPassword.All(char.IsLetterOrDigit))
+            yield return new("كلمة المرور يجب أن تجمع حروفًا وأرقامًا ورمزًا", [nameof(NewPassword)]);
+        if (NewPassword == CurrentPassword) yield return new("اختر كلمة مرور مختلفة عن الحالية", [nameof(NewPassword)]);
+    }
+}
+
 public sealed record LoginRequest(
     [property: Required(ErrorMessage = "البريد مطلوب"), EmailAddress(ErrorMessage = "بريد غير صالح"), MaxLength(200)] string Email,
     [property: Required(ErrorMessage = "كلمة المرور مطلوبة"), MaxLength(200)] string Password);
 
-internal sealed class LocalLoginService(Db db, IClock clock, IOptions<AuthOptions> options, IAuditWriter audit)
+internal sealed class LocalLoginService(Db db, IClock clock, IOptions<AuthOptions> options, IAuditWriter audit, IFeatureService features)
 {
     private static readonly PasswordHasher<object> Hasher = new();
 
     public static string Hash(string password) => Hasher.HashPassword(null!, password);
+
+    /// <summary>تغيير كلمة المرور ذاتيًا (إلزامي لحسابات الجهات الخارجية بعد كلمة المرور المؤقتة).</summary>
+    public async Task ChangeAsync(Guid userId, ChangePasswordRequest req, CancellationToken ct)
+    {
+        var hash = await db.ScalarAsync<string>("SELECT password_hash FROM iam.local_credentials WHERE user_id = @userId", new { userId }, ct)
+            ?? throw new ConflictException("no-local-password", "الحساب يدخل بالدخول الموحد؛ لا كلمة مرور محلية");
+        if (Hasher.VerifyHashedPassword(null!, hash, req.CurrentPassword) == PasswordVerificationResult.Failed)
+        {
+            await audit.WriteAsync(new AuditEntry("IAM", "auth.password_change_failed", "user", userId.ToString(), Outcome: "denied"), ct);
+            throw AppValidationException.For("currentPassword", "كلمة المرور الحالية غير صحيحة");
+        }
+        await db.ExecuteAsync("UPDATE iam.local_credentials SET password_hash = @h, must_change = false, password_set_at = now() WHERE user_id = @userId",
+            new { userId, h = Hash(req.NewPassword) }, ct);
+        await audit.WriteAsync(new AuditEntry("IAM", "auth.password_changed", "user", userId.ToString()), ct);
+    }
 
     /// <summary>يعيد المستخدم عند النجاح؛ ويطبق القفل بعد المحاولات الفاشلة. الرسالة موحدة حتى لا تكشف وجود الحساب.</summary>
     public async Task<(Guid Id, string Name)> AuthenticateAsync(LoginRequest req, CancellationToken ct)
@@ -191,7 +218,12 @@ internal sealed class LocalLoginService(Db db, IClock clock, IOptions<AuthOption
             await audit.WriteAsync(new AuditEntry("IAM", "auth.login_failed", "user", null, After: new { reason = "unknown_account" }, Outcome: "denied"), ct);
             throw invalid;
         }
-        if (o.BreakGlassOnly && row.Type != "local_breakglass")
+        // حسابات الجهات الخارجية ليست في دليل المكتب: تدخل محليًا عبر البوابة حين تكون مفعلة فقط
+        var portalEnabled = await features.IsEnabledAsync(FeatureKeys.ExternalPortalEnabled, ct);
+        var externalPortalUser = row.Type == "external" && await db.ScalarAsync<long>("""
+            SELECT count(*) FROM bodies.body_members WHERE user_id = @id AND status = 'active' AND (end_date IS NULL OR end_date >= current_date)
+            """, new { id = row.Id }, ct) == 0;
+        if (o.BreakGlassOnly && row.Type != "local_breakglass" && !(externalPortalUser && portalEnabled))
         {
             await audit.WriteAsync(new AuditEntry("IAM", "auth.login_failed", "user", row.Id.ToString(), After: new { reason = "local_login_restricted" }, Outcome: "denied"), ct);
             throw invalid;
@@ -212,6 +244,11 @@ internal sealed class LocalLoginService(Db db, IClock clock, IOptions<AuthOption
             await audit.WriteAsync(new AuditEntry("IAM", "auth.login_failed", "user", row.Id.ToString(),
                 After: new { reason = ok ? "disabled" : "bad_password", locked = lockUntil is not null }, Outcome: "denied"), ct);
             throw invalid;
+        }
+        if (externalPortalUser && !portalEnabled)
+        {
+            await audit.WriteAsync(new AuditEntry("IAM", "auth.login_failed", "user", row.Id.ToString(), After: new { reason = "external_portal_disabled" }, Outcome: "denied"), ct);
+            throw new AccessDeniedException("portal-disabled", "بوابة الجهات الخارجية غير متاحة حاليًا؛ تواصل مع مسؤول المتابعة في المكتب عبر القنوات الرسمية");
         }
         await db.ExecuteAsync("UPDATE iam.local_credentials SET failed_attempts = 0, locked_until = NULL WHERE user_id = @id", new { id = row.Id }, ct);
         return (row.Id, row.Name);

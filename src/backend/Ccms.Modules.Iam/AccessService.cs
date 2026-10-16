@@ -98,21 +98,52 @@ internal sealed class AccessService(
         return set;
     }
 
-    private async Task<HashSet<string>> TaskPermissionsAsync(Guid taskId, CancellationToken ct)
+    private readonly Dictionary<Guid, (HashSet<string> Internal, HashSet<string> Portal)> _taskSets = [];
+
+    /// <summary>صلاحيات المهمة من مصدرين منفصلين: الداخلي (الجهة والعلاقة المباشرة) والبوابة (ممثل الجهة الخارجية المكلفة).</summary>
+    private async Task<(HashSet<string> Internal, HashSet<string> Portal)> TaskSetsAsync(Guid taskId, CancellationToken ct)
     {
+        if (_taskSets.TryGetValue(taskId, out var cached)) return cached;
         var rel = await services.GetRequiredService<ITaskRelationQuery>().GetAsync(taskId, ct);
-        if (rel is null) return [];
+        if (rel is null) return _taskSets[taskId] = ([], []);
         var map = await RolePermissionsAsync(ct);
         var set = await BodyPermissionsAsync(rel.BodyId, ct);
-        if (rel.AssigneeUserId == user.UserId) set.UnionWith(RolePerms(map, Roles.TaskExecutor));
-        if (rel.AccountableUserId == user.UserId || rel.AssigneeOrgUnitManagerId == user.UserId)
-            set.UnionWith(RolePerms(map, Roles.TaskFollowUp));
+        // المنفذ: المكلَّف، أو المنفذ المسمى، أو مدير الإدارة المكلفة
+        if (rel.AssigneeUserId == user.UserId || rel.ExecutorUserId == user.UserId || rel.AssigneeOrgUnitManagerId == user.UserId)
+            set.UnionWith(RolePerms(map, Roles.TaskExecutor));
+        // مسؤول المتابعة داخل المكتب
+        if (rel.AccountableUserId == user.UserId) set.UnionWith(RolePerms(map, Roles.TaskFollowUp));
+        // المتحقق المسمى
+        if (rel.VerifierUserId == user.UserId) set.UnionWith([Permissions.TaskView, Permissions.TaskVerify, Permissions.TaskComment, Permissions.DocumentView]);
+        // مدير الإدارة التي ينتمي إليها المنفذ: اطلاع وإشراف (يتلقى التصعيد)
+        if (rel.ExecutingUnitManagerId == user.UserId) set.UnionWith([Permissions.TaskView, Permissions.TaskComment, Permissions.DocumentView]);
+        HashSet<string> portal = [];
         if (rel.AssigneeExternalEntityId is { } entity
             && (await MySystemRolesAsync(ct)).Contains(Roles.ExternalRepresentative)
             && await MyExternalEntityAsync(ct) == entity
-            && await features.IsEnabledAsync(FeatureKeys.ExternalPortalEnabled, ct))
-            set.UnionWith(RolePerms(map, Roles.ExternalRepresentative));
-        return set;
+            && await features.IsEnabledAsync(FeatureKeys.ExternalPortalEnabled, ct)
+            && !await MustChangePasswordAsync(ct))
+            portal = RolePerms(map, Roles.ExternalRepresentative).ToHashSet();
+        return _taskSets[taskId] = (set, portal);
+    }
+
+    private bool? _mustChange;
+
+    /// <summary>حساب الجهة الخارجية لا يصل إلى مهام جهته قبل تغيير كلمة المرور المؤقتة.</summary>
+    private async Task<bool> MustChangePasswordAsync(CancellationToken ct) =>
+        _mustChange ??= await db.ScalarAsync<bool?>("SELECT must_change FROM iam.local_credentials WHERE user_id = @id", new { id = user.UserId }, ct) ?? false;
+
+    private async Task<HashSet<string>> TaskPermissionsAsync(Guid taskId, CancellationToken ct)
+    {
+        var (inner, portal) = await TaskSetsAsync(taskId, ct);
+        return [.. inner, .. portal];
+    }
+
+    public async Task<bool> IsPortalOnlyAsync(Guid taskId, CancellationToken ct = default)
+    {
+        if (!user.IsAuthenticated) return false;
+        var (inner, portal) = await TaskSetsAsync(taskId, ct);
+        return !inner.Contains(Permissions.TaskView) && portal.Contains(Permissions.TaskView);
     }
 
     private async Task<HashSet<string>> RecordPermissionsAsync(string type, Guid id, CancellationToken ct)
@@ -133,6 +164,8 @@ internal sealed class AccessService(
         var set = new HashSet<string>();
         foreach (var o in owners)
         {
+            // ممثل الجهة الخارجية يرى من مستندات المهمة ما شورك معه صراحة فقط
+            if (o.OwnerType == "task" && !o.ExternalVisible && await IsPortalOnlyAsync(o.OwnerId, ct)) continue;
             var ownerPerms = o.OwnerType switch
             {
                 "body" => await BodyPermissionsAsync(o.OwnerId, ct),
@@ -176,5 +209,7 @@ internal sealed class AccessService(
         _systemRoles = null;
         _bodyRoles = null;
         _externalLoaded = false;
+        _taskSets.Clear();
+        _mustChange = null;
     }
 }

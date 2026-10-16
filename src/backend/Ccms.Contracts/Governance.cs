@@ -34,9 +34,11 @@ public sealed record VotingRule
 public sealed record BodyPolicy(
     Guid Id, Guid BodyId, int Version, DateOnly EffectiveFrom, QuorumRule Quorum, VotingRule Voting,
     bool SignoffRequired, int MinutesReviewDays, string ExtensionApprover, bool AllowProxy, int MaxProxiesPerMember,
-    bool AllowRemoteAttendance, bool AllowCirculation, DateTime CreatedAt, string? CreatedByName, MinutesWorkflow? Minutes = null)
+    bool AllowRemoteAttendance, bool AllowCirculation, DateTime CreatedAt, string? CreatedByName, MinutesWorkflow? Minutes = null,
+    EscalationRule? Escalation = null)
 {
     public MinutesWorkflow MinutesFlow => Minutes ?? new MinutesWorkflow();
+    public EscalationRule EscalationFlow => Escalation ?? EscalationRule.Default;
 }
 
 public static class PolicyJson
