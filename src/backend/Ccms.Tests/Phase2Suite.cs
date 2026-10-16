@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using Ccms.Contracts;
 using Ccms.Modules.Meetings;
@@ -233,6 +234,20 @@ public sealed class Phase2Suite(TestContext ctx)
         var item = await Json(sec, $"/api/v1/agenda-items/{_items[1]}");
         Check.That(item["item"]!["estimatedMinutes"]!.GetValue<int>() == 10 && item["item"]!.S("presenterText") == "مدير الأداء", "التعديل محفوظ");
         await Check.Problem(await (await As("obs")).PostAsync($"/api/v1/meetings/{_m1}/agenda-items", new { titleAr = "بند" }), 403, "forbidden-action", "المراقب لا يضيف بنودًا");
+
+        // مرفق البند: يرفعه أمين السر، ويطّلع عليه العضو، ولا يراه غير العضو
+        var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent("%PDF-1.4 agenda memo"u8.ToArray());
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        content.Add(file, "file", "kpi-memo.pdf");
+        content.Add(new StringContent("agenda_item"), "ownerType");
+        content.Add(new StringContent(_items[1].ToString()), "ownerId");
+        content.Add(new StringContent("agenda_memo"), "purpose");
+        var doc = (await Check.Status(await sec.PostContentAsync("/api/v1/documents", content), 201, "مرفق البند")).G("id");
+        var docs = (await Json(await As("m1"), $"/api/v1/documents?ownerType=agenda_item&ownerId={_items[1]}")).AsArray();
+        Check.That(docs.Count == 1 && docs[0]!.S("purpose") == "agenda_memo", "العضو يرى مرفق البند");
+        await Check.Status(await (await As("m1")).GetAsync($"/api/v1/documents/{doc}/content"), 200, "العضو ينزّل المرفق");
+        await Check.Problem(await (await As("outsider")).GetAsync($"/api/v1/documents/{doc}/content"), 404, "not-found", "غير العضو لا ينزّل");
     }
 
     [Test("P2-08", "إرسال الدعوات لكل الأعضاء بمن فيهم البديل، وضيف لبند بعينه، وتأكيد الحضور، والتذكير", 8)]
@@ -373,6 +388,7 @@ public sealed class Phase2Suite(TestContext ctx)
         var m2 = await Json(sec, $"/api/v1/meetings/{_m2}");
         var carried = m2["agenda"]!.AsArray().First(a => a!.G("id") == newItem)!;
         Check.That(carried.G("carriedFromItemId") == _items[1] && carried.G("carriedFromMeetingId") == _m1, "البند في الاجتماع اللاحق مرتبط بأصله");
+        Check.Equal(1L, carried["attachmentCount"]!.GetValue<long>(), "مرفق البند انتقل معه");
         var src = await Json(sec, $"/api/v1/agenda-items/{_items[1]}");
         Check.That(src["item"]!.S("status") == "deferred" && src["item"]!.G("forwardedToMeetingId") == _m2 && src["item"]!.S("statusReason").Contains("المؤشرات"),
             "الأصل يبقى «مؤجل» بسببه ويشير إلى الاجتماع اللاحق");

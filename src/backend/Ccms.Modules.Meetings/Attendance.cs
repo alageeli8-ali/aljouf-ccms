@@ -275,7 +275,10 @@ internal static class Attendance
     {
         await access.DemandAsync(Permissions.MeetingView, Scope.Record("meeting", id), ct);
         var c = await quorum.LoadContextAsync(db, id, ct);
-        var effective = mode ?? (c.MeetingType == "circulation" ? "circulation" : c.Status is "in_progress" or "concluded" or "closed" or "quorum_failed" ? "actual" : "forecast");
+        var recorded = await db.ScalarAsync<long>("SELECT count(*) FROM meetings.attendance_records WHERE meeting_id = @id", new { id }, ct) > 0;
+        // قبل الانعقاد: التوقع من ردود الدعوات، وما إن يبدأ تسجيل الحضور يُعتد بالحضور الفعلي
+        var effective = mode ?? (c.MeetingType == "circulation" ? "circulation"
+            : recorded || c.Status is "in_progress" or "concluded" or "closed" or "quorum_failed" ? "actual" : "forecast");
         if (effective is not ("actual" or "forecast" or "circulation")) throw AppValidationException.For("mode", "قيمة غير صالحة");
         var result = await quorum.ComputeAsync(db, c, effective, ct);
         var history = await db.QueryAsync("""

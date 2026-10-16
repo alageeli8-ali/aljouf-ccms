@@ -1,4 +1,6 @@
 import type { Dictionary } from './ar';
+import { mergeDeep } from './merge';
+import phase2En from './phase2.en';
 
 const en: Dictionary = {
   app: {
@@ -129,7 +131,7 @@ const en: Dictionary = {
     itemType: 'Item type',
     presenter: 'Presenter',
     memo: 'Memo',
-    schedule: 'Schedule and notify members',
+    schedule: 'Confirm date and assign number',
     scheduled: 'Meeting scheduled',
     cancelMeeting: 'Cancel meeting',
     createMinutes: 'Create minutes',
@@ -266,18 +268,22 @@ const en: Dictionary = {
     secretary: 'Secretary',
     member: 'Member',
     observer: 'Invitee / observer',
+    alternate: 'Alternate member',
     task_executor: 'Task executor',
     task_follow_up: 'Follow-up officer',
   },
   enums: {
-    bodyType: { council: 'Council', committee: 'Committee', sub_committee: 'Sub-committee', working_team: 'Working team' },
+    bodyType: {
+      supreme_council: 'Supreme council', steering_council: 'Steering council', executive_council: 'Executive council', permanent_committee: 'Standing committee',
+      temporary_committee: 'Temporary committee', working_team: 'Working team', sub_committee: 'Sub-committee', joint_committee: 'Joint committee',
+    },
     bodyStatus: { draft: 'Draft', active: 'Active', suspended: 'Suspended', dissolved: 'Dissolved', archived: 'Archived' },
     classification: { public: 'Public', restricted: 'Restricted', secret: 'Secret', top_secret: 'Top secret' },
     meetingStatus: {
       draft: 'Draft', scheduled: 'Scheduled', agenda_published: 'Agenda published', in_progress: 'In progress', concluded: 'Concluded',
       closed: 'Closed', postponed: 'Postponed', cancelled: 'Cancelled', quorum_failed: 'No quorum',
     },
-    meetingType: { regular: 'Regular', extraordinary: 'Extraordinary' },
+    meetingType: { regular: 'Regular', extraordinary: 'Extraordinary', urgent: 'Urgent', circulation: 'By circulation' },
     mode: { in_person: 'In person', remote: 'Remote', hybrid: 'Hybrid' },
     itemType: { for_decision: 'For decision', for_information: 'For information', for_discussion: 'For discussion' },
     minutesStatus: {
@@ -305,4 +311,4 @@ const en: Dictionary = {
   },
 };
 
-export default en;
+export default mergeDeep(en, phase2En);

@@ -33,3 +33,9 @@ export function dualDate(value: string | null | undefined, lang: string): string
 export function percent(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
+
+/** اسم الشهر والسنة (لرأس التقويم) ميلاديًا أو هجريًا. */
+export function formatMonth(value: string, lang: string, calendar: CalendarPref = 'gregorian'): string {
+  const d = new Date(`${value}T12:00:00+03:00`);
+  return new Intl.DateTimeFormat(locale(lang, calendar), { timeZone: TZ, year: 'numeric', month: 'long' }).format(d);
+}

@@ -25,3 +25,18 @@ body { background: #f4f5f1; -webkit-font-smoothing: antialiased; }
 .login-form { display: flex; align-items: center; justify-content: center; padding: 32px 20px; background: #fff; }
 @media (max-width: 900px) { .login-shell { grid-template-columns: 1fr; } .login-art { padding: 28px; min-height: 180px; } }
 .flag-row-blocked { opacity: .75; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.form-row > .ant-form-item { flex: 1 1 180px; min-width: 0; }
+.cal-event { display: block; font-size: 12px; line-height: 1.5; padding: 1px 6px; margin-bottom: 2px; border-radius: 4px; background: #e8f3ec; color: #00512b; border-inline-start: 3px solid #006837; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-event.extraordinary, .cal-event.urgent { background: #fdf1e7; color: #7a3d0b; border-inline-start-color: #B28655; }
+.cal-event.circulation { background: #eef1fb; color: #2b3a8a; border-inline-start-color: #4057c7; }
+.cal-event.cancelled, .cal-event.postponed { text-decoration: line-through; opacity: .6; }
+.quorum-box { border-radius: 8px; padding: 12px 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.quorum-box.met { background: #e8f3ec; border: 1px solid #9fcdb0; }
+.quorum-box.unmet { background: #fdeceb; border: 1px solid #f1aeaa; }
+.quorum-num { font-size: 28px; font-weight: 700; direction: ltr; unicode-bidi: isolate; }
+.item-meta { color: #5f6b64; font-size: 12px; }
+.ended-row { opacity: .6; }
+.ant-picker-calendar .ant-picker-cell-selected .ant-picker-calendar-date { background: transparent !important; }
+.ant-picker-calendar .ant-picker-cell-selected .ant-picker-calendar-date-value { color: rgba(0,0,0,.88) !important; }
+.ant-picker-calendar .ant-picker-cell-in-view.ant-picker-cell-today .ant-picker-calendar-date { border-top-color: #006837; background: #f3f8f4; }

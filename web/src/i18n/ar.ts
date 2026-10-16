@@ -1,3 +1,6 @@
+import { mergeDeep } from './merge';
+import phase2Ar from './phase2.ar';
+
 const ar = {
   app: {
     name: 'نظام إدارة المجالس واللجان',
@@ -127,7 +130,7 @@ const ar = {
     itemType: 'نوع البند',
     presenter: 'المقدم',
     memo: 'المذكرة',
-    schedule: 'تثبيت الموعد وإشعار الأعضاء',
+    schedule: 'تثبيت الموعد وترقيم الاجتماع',
     scheduled: 'جُدول الاجتماع',
     cancelMeeting: 'إلغاء الاجتماع',
     createMinutes: 'إنشاء المحضر',
@@ -264,18 +267,22 @@ const ar = {
     secretary: 'أمين السر',
     member: 'عضو',
     observer: 'مدعو أو مراقب',
+    alternate: 'عضو بديل',
     task_executor: 'مسؤول تنفيذ المهام',
     task_follow_up: 'مسؤول متابعة',
   },
   enums: {
-    bodyType: { council: 'مجلس', committee: 'لجنة', sub_committee: 'لجنة فرعية', working_team: 'فريق عمل' },
+    bodyType: {
+      supreme_council: 'مجلس أعلى', steering_council: 'مجلس توجيهي', executive_council: 'مجلس تنفيذي', permanent_committee: 'لجنة دائمة',
+      temporary_committee: 'لجنة مؤقتة', working_team: 'فريق عمل', sub_committee: 'لجنة فرعية', joint_committee: 'لجنة مشتركة',
+    },
     bodyStatus: { draft: 'مسودة', active: 'نشطة', suspended: 'معلقة', dissolved: 'منحلة', archived: 'مؤرشفة' },
     classification: { public: 'عام', restricted: 'مقيد', secret: 'سري', top_secret: 'سري للغاية' },
     meetingStatus: {
       draft: 'مسودة', scheduled: 'مجدول', agenda_published: 'جدول الأعمال منشور', in_progress: 'منعقد', concluded: 'انتهى',
       closed: 'مغلق', postponed: 'مؤجل', cancelled: 'ملغى', quorum_failed: 'لم يكتمل النصاب',
     },
-    meetingType: { regular: 'عادي', extraordinary: 'استثنائي' },
+    meetingType: { regular: 'دوري', extraordinary: 'استثنائي', urgent: 'عاجل', circulation: 'بالتمرير' },
     mode: { in_person: 'حضوري', remote: 'عن بعد', hybrid: 'مختلط' },
     itemType: { for_decision: 'للقرار', for_information: 'للاطلاع', for_discussion: 'للنقاش' },
     minutesStatus: {
@@ -303,5 +310,5 @@ const ar = {
   },
 };
 
-export default ar;
+export default mergeDeep(ar, phase2Ar);
 export type Dictionary = typeof ar;

@@ -14,6 +14,8 @@ const statusColors: Record<string, string> = {
   healthy: 'green', not_configured: 'default', failing: 'red', degraded: 'orange', disabled: 'default',
   succeeded: 'green', rejected_validation: 'orange', confirmation_required: 'gold', denied: 'red', failed: 'red',
   pending: 'gold', sent: 'green', logged: 'default', suppressed: 'default',
+  ended: 'default', accepted: 'green', declined: 'red', tentative: 'gold', present: 'green', absent: 'red', excused: 'orange', proxy: 'purple',
+  discussed: 'green', withdrawn: 'default', dropped: 'default',
 };
 
 export function StatusTag({ group, value }: { group: string; value: string }) {

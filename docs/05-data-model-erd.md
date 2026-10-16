@@ -779,6 +779,40 @@ erDiagram
 - `minutes.minutes`: أضيف `draft_content`؛ و`minutes.minutes_signoffs.status` ∈ `requested`, `valid`, `invalidated`.
 - `iam.users`: أضيف `external_entity_id` لربط ممثل الجهة الخارجية بجهته.
 
+### 3.17 جداول وتعديلات المرحلة 2 (المنفذة فعليًا)
+
+الترحيل V008 هو المرجع الملزم. القاعدة العامة: **لا حذف لسجل رسمي**؛ التغيير يُنهي السجل القائم بسببه وينشئ سجلًا جديدًا مرتبطًا به، والأحداث في `audit.audit_events`.
+
+#### bodies.body_partner_entities
+`body_id`، `external_entity_id` — PK مركب، `added_at`. الجهات الخارجية الشريكة في اللجنة المشتركة (إلزامية لتفعيلها).
+
+#### bodies.body_terms
+`id`، `body_id`، `change_type` ∈ `initial`, `renewal`, `extension`، `term_start`، `term_end`، `decision_no`، `decision_date`، `reason`، `created_by`. إلحاقي: حساب التطبيق لا يملك UPDATE/DELETE.
+
+#### iam.delegations
+`id`، `body_id`، `delegator_user_id`، `delegate_user_id`، `scope` ∈ `chair_authority`, `attendance_proxy`، `valid_from`، `valid_to`، `reason`، `status` ∈ `active`, `revoked`. التفويض الساري بصلاحيات الرئيس يمنح المفوَّض أدوار الرئيس في الجهة خلال المدة (06 §6).
+
+#### meetings.invitations
+`id`، `meeting_id`، `user_id` (فريد مع الاجتماع)، `invitee_kind` ∈ `member`, `guest`، `body_member_id`، `agenda_item_id` (ضيف البند)، `sent_at`، `response` ∈ `pending`, `accepted`, `declined`, `tentative`، `response_note`، `responded_at`، `last_reminder_at`.
+
+#### meetings.attendance_records
+`id`، `meeting_id`، `user_id` (فريد مع الاجتماع)، `body_member_id`، `status` ∈ `present`, `absent`, `excused`, `proxy`، `attendance_mode` ∈ `in_person`, `remote` (إلزامي للحاضر)، `proxy_holder_user_id` (إلزامي للإنابة فقط)، `note`، `arrived_at`، `left_at`، `recorded_by`.
+
+#### meetings.quorum_checks
+`id`، `meeting_id`، `context` ∈ `forecast`, `opening`, `departure`, `manual`, `circulation`، `eligible_count`، `counted_present`، `required_count`، `chair_present`، `is_met`، `override_reason`، `rule_snapshot` (jsonb: القاعدة وإصدار السياسة)، `breakdown` (jsonb: سبب احتساب كل عضو)، `checked_by`، `checked_at`. إلحاقي.
+
+#### meetings.pending_items
+`id`، `body_id` (الجهة التي ينتظر الإدراج فيها)، `source_item_id`، `source_body_id`، `kind` ∈ `deferred`, `referred`، `title_ar`، `description_ar`، `reason`، `status` ∈ `pending`, `scheduled`, `dropped`، `scheduled_item_id`، `created_by`، `scheduled_at`. البنود المؤجلة والمحالة بانتظار اجتماع.
+
+**تعديلات على جداول قائمة:**
+- `bodies.bodies`: `body_type` بثمانية أنواع (`supreme_council`, `steering_council`, `executive_council`, `permanent_committee`, `temporary_committee`, `working_team`, `sub_committee`, `joint_committee`)، و`reference_no` فريد `BOD-{السنة}-{تسلسل}`، و`objective_ar/en`، و`authority_ref`، و`meeting_frequency`، و`status_reason`؛ وقيود: المؤقتة وفريق العمل بتاريخ انتهاء، والفرعية بجهة أم.
+- `bodies.body_members`: الدور `alternate` مع `alternate_for_member_id` (إلزامي للبديل فقط)، و`status` ∈ `active`, `suspended`, `ended`، و`end_reason`، و`ended_by`، و`replaced_by_member_id`؛ وفهرس فريد جزئي يمنع عضويتين مفتوحتين للمستخدم في الجهة.
+- `meetings.meetings`: النوعان `urgent` و`circulation` (مع `circulation_deadline` إلزامي له وحده)، و`previous_meeting_id`، و`rescheduled_from_meeting_id`، و`status_reason`، و`actual_started_at/ended_at`، و`invitations_sent_at`، ولقطة `chair_user_id` و`secretary_user_id`.
+- `meetings.agenda_items`: الحالة `referred`، و`description_ar`، و`owner_org_unit_id`، و`owner_text`، و`discussion_summary`، و`recommendation_text`، و`status_reason`، و`carried_from_item_id`؛ وقيد الترتيب مؤجل الفحص لنهاية المعاملة.
+- `resolutions.resolutions` و`tasks.tasks`: `agenda_item_id` لربط القرار والمهمة بالبند.
+- `docs.document_links`: مالك جديد `agenda_item`.
+- `iam.users`: `work_phone` (هاتف العمل فقط).
+
 ## 4. عروض التقارير (RPT)
 
 وحدة RPT لا تملك جداول؛ تقرأ من عروض SQL في مخطط `reporting` يملكها فريق التقنية ويُصدر ترحيلها مع الوحدات:

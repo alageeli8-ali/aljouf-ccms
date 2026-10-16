@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import MeetingDetailPage from './pages/MeetingDetailPage';
 import MeetingsPage from './pages/MeetingsPage';
+import MembershipsPage from './pages/MembershipsPage';
 import { MinutesDetailPage, MinutesListPage, ResolutionsPage } from './pages/MinutesPages';
 import { NotificationsPage, ReportsPage } from './pages/ReportsAndNotifications';
 import SettingsPage from './pages/SettingsPage';
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="bodies" element={<BodiesPage />} />
         <Route path="bodies/:id" element={<BodyDetailPage />} />
+        <Route path="memberships" element={<MembershipsPage />} />
         <Route path="meetings" element={<MeetingsPage />} />
         <Route path="meetings/:id" element={<MeetingDetailPage />} />
         <Route path="minutes" element={<MinutesListPage />} />

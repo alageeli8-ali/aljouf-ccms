@@ -1,7 +1,7 @@
 import { Avatar, Badge, Button, Dropdown, Layout, Menu, Space, Tag, Typography } from 'antd';
 import {
   AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, CheckSquareOutlined, FileTextOutlined,
-  GlobalOutlined, LogoutOutlined, SettingOutlined, TeamOutlined, UserOutlined, SolutionOutlined, ExportOutlined,
+  GlobalOutlined, IdcardOutlined, LogoutOutlined, SettingOutlined, TeamOutlined, UserOutlined, SolutionOutlined, ExportOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -42,6 +42,7 @@ export default function AppLayout() {
     ] },
     { type: 'group' as const, label: collapsed ? null : t('nav.governance'), children: [
       { key: '/bodies', icon: <TeamOutlined />, label: <Link to="/bodies">{t('nav.bodies')}</Link> },
+      { key: '/memberships', icon: <IdcardOutlined />, label: <Link to="/memberships">{t('nav.memberships')}</Link> },
       { key: '/meetings', icon: <CalendarOutlined />, label: <Link to="/meetings">{t('nav.meetings')}</Link> },
       { key: '/minutes', icon: <FileTextOutlined />, label: <Link to="/minutes">{t('nav.minutes')}</Link> },
       { key: '/resolutions', icon: <SolutionOutlined />, label: <Link to="/resolutions">{t('nav.resolutions')}</Link> },

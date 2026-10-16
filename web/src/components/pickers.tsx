@@ -31,14 +31,14 @@ export function UserSelect({ value, onChange, placeholder, allowClear, style }: 
   );
 }
 
-export function OrgUnitSelect({ value, onChange, placeholder, style }: Props) {
+export function OrgUnitSelect({ value, onChange, placeholder, style, allowClear }: Props) {
   const q = useQuery({ queryKey: ['org-units'], queryFn: () => get<OrgUnit[]>('/api/v1/org-units') });
-  return <Select value={value} onChange={onChange} placeholder={placeholder} style={{ minWidth: 220, ...style }} options={(q.data ?? []).map((o) => ({ value: o.id, label: `${o.nameAr} (${o.code})` }))} />;
+  return <Select value={value} onChange={onChange} placeholder={placeholder} allowClear={allowClear} style={{ minWidth: 220, ...style }} options={(q.data ?? []).map((o) => ({ value: o.id, label: `${o.nameAr} (${o.code})` }))} />;
 }
 
-export function EntitySelect({ value, onChange, placeholder, style, allowClear }: Props) {
+export function EntitySelect({ value, onChange, placeholder, style, allowClear, mode }: Props<any> & { mode?: 'multiple' }) {
   const q = useQuery({ queryKey: ['external-entities'], queryFn: () => get<ExternalEntity[]>('/api/v1/external-entities') });
-  return <Select value={value} onChange={onChange} placeholder={placeholder} allowClear={allowClear} style={{ minWidth: 220, ...style }} options={(q.data ?? []).map((e) => ({ value: e.id, label: e.nameAr }))} />;
+  return <Select value={value} onChange={onChange} placeholder={placeholder} allowClear={allowClear} mode={mode} showSearch optionFilterProp="label" style={{ minWidth: 220, ...style }} options={(q.data ?? []).map((e) => ({ value: e.id, label: e.nameAr }))} />;
 }
 
 export function EnumSelect({ group, values, value, onChange, placeholder, allowClear, style, mode }: Props<any> & { group: string; values: string[]; mode?: 'multiple' }) {
