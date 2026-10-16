@@ -1,5 +1,33 @@
 # 07 — الإعدادات المركزية (Feature Flags)
 
+## 0. المفاتيح المنفذة في المرحلة 1 (المرجع الملزم للتنفيذ)
+
+اعتمد المكتب أسماء المفاتيح التالية؛ هي المخزنة في `config.feature_flags` (الترحيلان V005 وV007). الجدول في §3 يبقى مرجع التصميم لما بعد المرحلة 1، ويقابله هذا الجدول:
+
+| المفتاح المنفذ | النوع | المفتاح الأعلى | يقابل في التصميم | الموصل |
+|---|---|---|---|---|
+| `AI_ENABLED` | منطقي | — | `module.ai` | ai |
+| `AI_MINUTES_SUMMARY_ENABLED` | منطقي | AI_ENABLED | `ai.memo_summary` | ai |
+| `AI_DECISION_EXTRACTION_ENABLED` | منطقي | AI_ENABLED | `ai.action_extraction` (القرارات) | ai |
+| `AI_TASK_EXTRACTION_ENABLED` | منطقي | AI_ENABLED | `ai.action_extraction` (المهام) | ai |
+| `AI_SMART_SEARCH_ENABLED` | منطقي | AI_ENABLED | `ai.assistant_qa` + `ai.semantic_index` | ai |
+| `AI_AUDIO_TRANSCRIPTION_ENABLED` | منطقي | AI_ENABLED | `ai.transcription` | ai |
+| `E_SIGNATURE_ENABLED` | منطقي | — | `module.esignature` | esign |
+| `E_SIGNATURE_PROVIDER` | قائمة: none, sandbox, national_provider | E_SIGNATURE_ENABLED | `esign.provider` | esign |
+| `E_SIGNATURE_METHOD` | قائمة: remote_certificate, otp_confirmation | E_SIGNATURE_ENABLED | — | esign |
+| `E_SIGNATURE_MEMBER_REQUIRED` | منطقي | E_SIGNATURE_ENABLED | `esign.attendee_signing` | esign |
+| `E_SIGNATURE_CHAIR_REQUIRED` | منطقي | E_SIGNATURE_ENABLED | `esign.chair_signing` | esign |
+| `E_SIGNATURE_SECRETARY_REQUIRED` | منطقي | E_SIGNATURE_ENABLED | — | esign |
+| `E_SIGNATURE_SEQUENTIAL` | منطقي | E_SIGNATURE_ENABLED | — | esign |
+| `E_SIGNATURE_PDF_OUTPUT` | منطقي | E_SIGNATURE_ENABLED | — | esign |
+| `E_SIGNATURE_REAUTH_REQUIRED` | منطقي | E_SIGNATURE_ENABLED | — | esign |
+| `EXTERNAL_PORTAL_ENABLED` | منطقي | — | (جديد) بوابة ممثلي الجهات الخارجية | — |
+| `EMAIL_INTEGRATION_ENABLED` | منطقي | — | `integrations.graph_mail` / `integrations.smtp` | email |
+| `CORRESPONDENCE_INTEGRATION_ENABLED` | منطقي | — | `integrations.qemam` | correspondence |
+| `SSO_ENABLED` | منطقي | — | (جديد) الدخول الموحد عبر Entra ID | sso |
+
+قواعد مطبقة ومختبرة في المرحلة 1: القيمة الفعلية = قيمة المفتاح ∧ المفتاح الأعلى، ويتقدم عليهما قفل البيئة `FeatureManagement:Locks:<KEY>`؛ حالة الإعداد مستقلة عن حالة اتصال المزوّد (`config.connector_status`)؛ كل محاولة تغيير تُسجَّل في `config.feature_flag_history` بالنتيجة (`succeeded`, `rejected_validation`, `confirmation_required`, `denied`, `failed`)؛ والتغيير المؤثر في عمليات جارية يتطلب `confirmImpact=true`. تجاوزات المفاتيح على مستوى الجهة (§2) مؤجلة إلى المرحلة 2.
+
 ## 1. الأهداف والضمانات
 
 1. تفعيل أي وحدة اختيارية أو قدرة أو موصل وتعطيله من لوحة الإدارة دون نشر جديد ولا إعادة تشغيل.

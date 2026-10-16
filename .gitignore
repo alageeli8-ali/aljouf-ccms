@@ -9,7 +9,9 @@ dist/
 .env.local
 appsettings.Local.json
 /storage/
-src/backend/Ccms.Host/wwwroot/app/
-src/backend/Ccms.Host/wwwroot/swagger/
+src/backend/Ccms.Host/wwwroot/*
+!src/backend/Ccms.Host/wwwroot/.gitkeep
+*.tsbuildinfo
 TestResults/
 *.log
+deploy/certs/*.pem

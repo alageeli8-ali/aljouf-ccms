@@ -90,6 +90,7 @@ public sealed class ConfigurationModule : IModule
             nameAr = f.NameAr,
             nameEn = f.NameEn,
             descriptionAr = f.DescriptionAr,
+            descriptionEn = f.DescriptionEn,
             updatedAt = f.UpdatedAt,
             updatedBy = f.UpdatedByName,
         }));

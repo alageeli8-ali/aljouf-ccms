@@ -1,0 +1,56 @@
+# تشغيل على خادم واحد (المرحلة الأولى — 03 §8). الأسرار من ملف .env (انظر deploy/.env.example) ولا تُحفظ في المستودع.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD:?}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/bootstrap.sql:/bootstrap.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+
+  migrate:
+    image: ccms:${CCMS_VERSION:-latest}
+    command: ["migrate"]
+    environment:
+      ConnectionStrings__Migrations: Host=db;Database=ccms;Username=ccms_owner;Password=${CCMS_OWNER_PASSWORD:?}
+      ConnectionStrings__App: Host=db;Database=ccms;Username=ccms_app;Password=${CCMS_APP_PASSWORD:?}
+      Database__MigrationsPath: /app/migrations
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    image: ccms:${CCMS_VERSION:-latest}
+    build: .
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__App: Host=db;Database=ccms;Username=ccms_app;Password=${CCMS_APP_PASSWORD:?}
+      Authentication__Entra__TenantId: ${ENTRA_TENANT_ID:-}
+      Authentication__Entra__ClientId: ${ENTRA_CLIENT_ID:-}
+      Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:-}
+      Integrations__Email__Provider: ${EMAIL_PROVIDER:-none}
+      Integrations__Email__SmtpHost: ${SMTP_HOST:-}
+      Integrations__Email__From: ${MAIL_FROM:-}
+    volumes:
+      - storage:/var/lib/ccms/storage
+      - keys:/var/lib/ccms/keys
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  nginx:
+    image: nginx:1.27
+    restart: unless-stopped
+    ports: ["443:443", "80:80"]
+    volumes:
+      - ./deploy/nginx/ccms.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    depends_on: [app]
+
+volumes:
+  pgdata: {}
+  storage: {}
+  keys: {}

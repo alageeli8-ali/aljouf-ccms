@@ -1,0 +1,27 @@
+@font-face{font-family:"Plex Arabic";src:url(/fonts/plex-arabic-400.woff2) format("woff2");font-weight:400;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+0870-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F}
+@font-face{font-family:"Plex Arabic";src:url(/fonts/plex-arabic-500.woff2) format("woff2");font-weight:500;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+0870-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F}
+@font-face{font-family:"Plex Arabic";src:url(/fonts/plex-arabic-600.woff2) format("woff2");font-weight:600;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+0870-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F}
+@font-face{font-family:"Plex Arabic";src:url(/fonts/plex-arabic-700.woff2) format("woff2");font-weight:700;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+0870-08FF,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F}
+@font-face{font-family:"Plex Arabic";src:url(/fonts/plex-latin-400.woff2) format("woff2");font-weight:400;font-display:swap;unicode-range:U+0000-00FF,U+2000-206F}
+@font-face{font-family:"Plex Arabic";src:url(/fonts/plex-latin-600.woff2) format("woff2");font-weight:600;font-display:swap;unicode-range:U+0000-00FF,U+2000-206F}
+@font-face{font-family:"Plex Arabic";src:url(/fonts/plex-latin-700.woff2) format("woff2");font-weight:700;font-display:swap;unicode-range:U+0000-00FF,U+2000-206F}
+@font-face{font-family:"Kufi";src:url(/fonts/kufi-600.woff2) format("woff2");font-weight:600;font-display:swap}
+
+html, body, #root { height: 100%; margin: 0; }
+body { background: #f4f5f1; -webkit-font-smoothing: antialiased; }
+.brand-mark { font-family: "Kufi", "Plex Arabic", sans-serif; letter-spacing: 0; }
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.page-header h1 { font-size: 22px; margin: 0; font-weight: 600; color: #1f2a24; }
+.page-header p { margin: 4px 0 0; color: #5f6b64; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.stat-tile { border-inline-start: 4px solid #006837; }
+.stat-tile.warn { border-inline-start-color: #b42318; }
+.stat-tile.tan { border-inline-start-color: #B28655; }
+.mono { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
+.zigzag { height: 6px; background: repeating-linear-gradient(135deg, #B28655 0 6px, transparent 6px 12px); opacity: .55; }
+.login-shell { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
+.login-art { background: linear-gradient(160deg, #006837 0%, #00512b 55%, #553D26 100%); color: #fff; padding: 56px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; }
+.login-art::after { content: ""; position: absolute; inset: auto -80px -80px auto; width: 320px; height: 320px; border: 28px solid rgba(178,134,85,.35); transform: rotate(30deg); }
+.login-form { display: flex; align-items: center; justify-content: center; padding: 32px 20px; background: #fff; }
+@media (max-width: 900px) { .login-shell { grid-template-columns: 1fr; } .login-art { padding: 28px; min-height: 180px; } }
+.flag-row-blocked { opacity: .75; }

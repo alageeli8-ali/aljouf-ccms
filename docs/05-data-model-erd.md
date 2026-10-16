@@ -749,6 +749,36 @@ erDiagram
 #### integ.connector_health
 `connector` PK، `last_check_at`، `status` ∈ `disabled`, `healthy`, `degraded`, `failing`, `not_configured`، `detail`.
 
+### 3.16 جداول وتعديلات المرحلة 1 (المنفذة فعليًا)
+
+الترحيلات V001–V007 في `db/migrations` هي المرجع الملزم للهيكل المنفذ. ما يلي جداول أُضيفت أو تغيّرت عن التصميم أعلاه:
+
+#### iam.roles
+`code` PK، `scope` ∈ `system`, `body`, `relation`، `name_ar`، `name_en`، `sort_order`. كتالوج الأدوار الاثني عشر (06 §0).
+
+#### iam.permissions
+`code` PK، `scope` ∈ `system`, `body`, `task`, `entity`، `description_ar`.
+
+#### iam.role_permissions
+`role_code`، `permission_code` — PK مركب. مصفوفة الصلاحيات تُزرع بالترحيل وتُقرأ في الخادم.
+
+#### iam.local_credentials
+`user_id` PK، `password_hash` (PBKDF2 من ASP.NET Core Identity)، `failed_attempts`، `locked_until`، `password_set_at`، `must_change`. للتطوير والاختبار وحساب الطوارئ فقط.
+
+#### iam.sso_requests
+`state` PK، `nonce`، `code_verifier`، `return_url`، `created_at`. حالة طلبات الدخول الموحد الجارية، تُحذف عند الاستخدام أو بعد 15 دقيقة.
+
+#### config.connector_status
+`code` PK (`ai`, `esign`, `email`, `correspondence`, `sso`)، `status` ∈ `not_configured`, `healthy`, `degraded`, `failing`, `disabled`، `detail`، `latency_ms`، `checked_at`. حالة الاتصال الفعلية بعد آخر فحص، مستقلة عن تفعيل الخاصية.
+
+**تعديلات على جداول التصميم:**
+- `config.feature_flags`: المفتاح بأحرف كبيرة (`AI_ENABLED`...)، و`value_type` ∈ `boolean`, `enum`، و`value` نصي مقيد بالنوع و`allowed_values`، و`parent_key` بدل `depends_on`، و`connector_code`، و`description_en` (V007). تجاوزات الجهة مؤجلة.
+- `config.feature_flag_history`: أضيف `result` (succeeded, rejected_validation, confirmation_required, denied, failed) و`result_detail` و`actor_display`، ويُسجَّل فيه كل محاولة لا التغييرات الناجحة فقط.
+- `audit.audit_events`: أضيف `outcome` و`chain_seq`، والبصمة يحسبها مشغّل في القاعدة (V006).
+- `bodies.body_members.role`: الأدوار المنفذة `chair`, `vice_chair`, `secretary`, `member`, `observer`.
+- `minutes.minutes`: أضيف `draft_content`؛ و`minutes.minutes_signoffs.status` ∈ `requested`, `valid`, `invalidated`.
+- `iam.users`: أضيف `external_entity_id` لربط ممثل الجهة الخارجية بجهته.
+
 ## 4. عروض التقارير (RPT)
 
 وحدة RPT لا تملك جداول؛ تقرأ من عروض SQL في مخطط `reporting` يملكها فريق التقنية ويُصدر ترحيلها مع الوحدات:

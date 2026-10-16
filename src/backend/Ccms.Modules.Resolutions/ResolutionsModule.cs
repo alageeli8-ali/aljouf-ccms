@@ -47,13 +47,14 @@ public sealed class ResolutionsModule : IModule
         source = r.Get<string>("source"), createdAt = r.Get<DateTime>("created_at"), taskCount = r.Get<long>("task_count"),
     };
 
-    private static async Task<IResult> List(Guid? bodyId, string? status, string? type, string? q, int? page, int? pageSize, Db db, IAccessService access, CancellationToken ct)
+    private static async Task<IResult> List(Guid? bodyId, Guid? minutesId, string? status, string? type, string? q, int? page, int? pageSize, Db db, IAccessService access, CancellationToken ct)
     {
         var filter = await access.GetBodyFilterAsync(Permissions.ResolutionView, ct);
         var p = PageQuery.From(page, pageSize);
-        var args = new { all = filter.All, ids = filter.BodyIds, bodyId, status, type, q = SqlText.Like(q), limit = p.PageSize, offset = p.Offset };
+        var args = new { all = filter.All, ids = filter.BodyIds, bodyId, minutesId, status, type, q = SqlText.Like(q), limit = p.PageSize, offset = p.Offset };
         const string where = """
             WHERE (@all::boolean OR r.body_id = ANY(@ids::uuid[])) AND (@bodyId::uuid IS NULL OR r.body_id = @bodyId)
+              AND (@minutesId::uuid IS NULL OR r.minutes_id = @minutesId)
               AND (@status::text IS NULL OR r.status = @status) AND (@type::text IS NULL OR r.resolution_type = @type)
               AND (@q::text IS NULL OR r.title_ar ILIKE @q OR r.text_ar ILIKE @q OR r.number ILIKE @q)
             """;
