@@ -72,6 +72,8 @@ const phase4Ar = {
     verifyNote: 'ملاحظة التحقق',
     returnTitle: 'إعادة المهمة للمنفذ',
     returnOk: 'إعادة',
+    verifyHelp: 'قرّر لكل مخرج مقدَّم؛ لا تُغلق المهمة إلا بعد قبول جميع المخرجات الإلزامية. يُسجَّل اسمك ووقت التحقق.',
+    returnHelp: 'حدّد المخرجات المقبولة والمرفوضة واذكر ما يلزم استكماله؛ تعود المهمة إلى المنفذ قيد التنفيذ.',
     completionNote: 'ملخص ما أُنجز',
     actionHelp: {
       assign: 'تُسند المهمة وتُرقّم ويُشعر المنفذ ومسؤول المتابعة.',
@@ -150,7 +152,7 @@ const phase4Ar = {
     dash: {
       open: 'مفتوحة', overdue: 'متأخرة', dueSoon: 'تستحق خلال 7 أيام', pendingReview: 'بانتظار المراجعة', pendingExtensions: 'تمديد معلّق',
       escalated: 'مصعّدة', completionRate: 'نسبة الإنجاز', onTimeRate: 'الإنجاز في الموعد',
-      basis: 'محسوبة من بيانات النظام: {{total}} مهمة غير ملغاة، منها {{completed}} مغلقة، و{{cancelled}} ملغاة مستبعدة؛ متوسط الإنجاز {{avg}}٪',
+      basis: 'محسوبة من بيانات النظام: {{total}} مهمة غير ملغاة، المغلقة منها {{completed}}، مع استبعاد الملغاة ({{cancelled}})؛ متوسط الإنجاز {{avg}}٪',
       byStatus: 'حسب الحالة', byPriority: 'حسب الأولوية', byBody: 'حسب المجلس أو اللجنة', byExecutor: 'حسب المنفذ', byDue: 'حسب الاستحقاق',
       bucket: 'الفترة', count: 'العدد',
       buckets: { overdue: 'متأخرة', next_7_days: 'خلال 7 أيام', next_30_days: 'خلال 30 يومًا', later: 'لاحقًا', no_due_date: 'بلا تاريخ', past_due_waiting: 'تجاوزت الموعد وهي بانتظار المراجعة' },
@@ -222,6 +224,7 @@ const phase4Ar = {
       extension: { approve: 'اعتماد التمديد' }, letters: { manage: 'خطابات التكليف' }, workflow: { manage: 'تهيئة دورة المهام' },
     },
   },
+  login: { portalDisabled: 'بوابة الجهات الخارجية غير متاحة حاليًا؛ يتواصل معكم مسؤول المتابعة في المكتب عبر القنوات الرسمية.' },
   portal: {
     title: 'تكليفات الجهة',
     myAssignments: 'تكليفات الجهة',

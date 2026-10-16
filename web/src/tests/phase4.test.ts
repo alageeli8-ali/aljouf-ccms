@@ -40,6 +40,16 @@ describe('المرحلة 4', () => {
     for (const k of keys) for (const d of [ar, en]) expect(typeof lookup(d, k), k).toBe('string');
   });
 
+  it('كل مفتاح نصي للمرحلة 4 مذكور حرفيًا (ولو داخل شرط) موجود باللغتين', () => {
+    const sources = import.meta.glob(['../pages/**/*.tsx', '../layout/**/*.tsx'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+    const missing: string[] = [];
+    for (const [file, text] of Object.entries(sources))
+      for (const m of text.matchAll(/'((?:tasks4|portal)\.[a-zA-Z0-9_.]+)'/g))
+        for (const [name, dict] of [['ar', ar], ['en', en]] as const)
+          if (typeof lookup(dict, m[1]) !== 'string') missing.push(`${name}:${m[1]} (${file})`);
+    expect(missing).toEqual([]);
+  });
+
   it('نصوص الخطاب لا تدّعي الإرسال قبل تسجيله', () => {
     // «معتمد» ليس «مرسلًا»: الحالة المعتمدة تصرّح بأنه لم يُرسل
     expect(lookup(ar, 'tasks4.letters.status.approved')).toContain('لم يُرسل');

@@ -31,7 +31,8 @@ export default function LoginPage() {
       await login(v.email, v.password);
       nav(params.get('returnUrl') ?? '/', { replace: true });
     } catch (e) {
-      setError(e instanceof ApiError && e.code === 'account-locked' ? t('login.locked') : t('login.failed'));
+      setError(e instanceof ApiError && e.code === 'account-locked' ? t('login.locked')
+        : e instanceof ApiError && e.code === 'portal-disabled' ? t('login.portalDisabled') : t('login.failed'));
     } finally {
       setBusy(false);
     }

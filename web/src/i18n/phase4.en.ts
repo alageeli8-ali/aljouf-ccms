@@ -72,6 +72,8 @@ const phase4En = {
     verifyNote: 'Verification note',
     returnTitle: 'Return the task to the executor',
     returnOk: 'Return',
+    verifyHelp: 'Decide on each submitted deliverable; the task closes only once all required deliverables are accepted. Your name and time are recorded.',
+    returnHelp: 'Mark accepted and rejected deliverables and state what is still needed; the task goes back to the executor in progress.',
     completionNote: 'Summary of what was done',
     actionHelp: {
       assign: 'The task is assigned and numbered; the executor and follow-up officer are notified.',
@@ -222,6 +224,7 @@ const phase4En = {
       extension: { approve: 'Approve extensions' }, letters: { manage: 'Assignment letters' }, workflow: { manage: 'Configure task workflow' },
     },
   },
+  login: { portalDisabled: 'The external entities portal is currently unavailable; the office follow-up officer will contact you through official channels.' },
   portal: {
     title: 'Entity assignments',
     myAssignments: 'Entity assignments',

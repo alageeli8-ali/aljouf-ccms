@@ -842,6 +842,40 @@ erDiagram
 - `meetings.quorum_checks`: السياق `vote`.
 - `docs.document_links`: الغرض `approval_evidence`.
 
+### 3.19 جداول وتعديلات المرحلة 4 (المنفذة فعليًا)
+
+الترحيل V010 هو المرجع الملزم. مقدَّمات المخرجات وقرارات المراجعة **إلحاقية**، وسجل التصعيد إلحاقي عدا أعمدة الإقرار بالاطلاع.
+
+#### tasks.workflow_statuses
+`code` (PK)، `name_ar/en`، `category` ∈ `new`, `open`, `active`, `waiting`, `review`, `done`, `closed`, `derived`، `color`، `sort_order`، `is_system`، `active`. الحالات الأساسية: `new`, `assigned`, `accepted`, `in_progress`, `on_hold`, `pending_review`, `completed`, `rejected`, `cancelled`، و`overdue` بفئة `derived` (محسوبة، لا تُخزن في مهمة — ADR-019). يمكن إضافة حالات بفئة `active` أو `waiting`.
+
+#### tasks.workflow_transitions
+`id`، `action`، `from_status`/`to_status` (FK للحالات، ولا يكون أيهما `overdue`)، `name_ar/en`، `permission` (FK لـ `iam.permissions`)، `actors` ⊆ {`executor`, `follow_up`, `verifier`, `manager`}، `requires_reason`، `is_system`، `active`، `sort_order`؛ فريد (`from_status`, `action`).
+
+#### tasks.task_deliverables
+`id`، `task_id`، `position`، `title`، `description`، `acceptance_criteria`، `required`، `status` ∈ `pending`, `submitted`, `accepted`, `rejected`, `removed`، `review_note`، `reviewed_by/at`.
+
+#### tasks.deliverable_submissions (إلحاقي)
+`id`، `deliverable_id`، `task_id`، `document_ids` (uuid[])، `note`، `channel` ∈ `system`, `portal`, `recorded`، `submitted_by`، `created_at`.
+
+#### tasks.task_reviews (إلحاقي)
+`id`، `task_id`، `decision` ∈ `accepted`, `returned`، `note`، `deliverable_decisions` (jsonb)، `reviewer_user_id`، `acting_capacity`.
+
+#### tasks.extension_requests
+`id`، `task_id`، `requested_by`، `channel`، `reference`، `current_due_date`، `requested_due_date`، `delay_cause` ∈ `dependency`, `resources`, `scope_change`, `external_party`, `data_availability`, `other`، `reason`، `status` ∈ `pending`, `approved`, `rejected`, `withdrawn`، `approved_due_date`، `decided_by/at`، `decision_note`؛ طلب معلق واحد لكل مهمة بفهرس جزئي.
+
+#### tasks.escalations
+`id`، `task_id`، `kind` ∈ `reminder`, `escalation`, `manual`, `review_overdue`، `level` (0–10)، `trigger`، `period_key`، `due_date`، `days_overdue`، `reason`، `recipient_roles` (text[])، `recipients` (jsonb: الاسم والصفة والإدارة لكل مستلم)، `created_by`، `acknowledged_by/at`، `ack_note`؛ فريد (`task_id`, `kind`, `level`, `period_key`).
+
+#### tasks.assignment_letters
+`id`، `reference_no` فريد، `body_id`، `resolution_id`، `recipient_type` ∈ `org_unit`, `external_entity`, `user` ومعرّفه، `recipient_name`، `recipient_attention`، `subject`، `body_text`، `due_date`، `task_ids`، `attachment_ids`، `share_with_entity`، `status` ∈ `draft`, `approved`, `dispatched_manual`, `dispatched_integration`, `cancelled`، `approved_by/at`، `dispatch_channel`، `outgoing_no`، `outgoing_date`، `integration_ref`، `dispatched_by/at`، `cancel_reason`، `pdf_document_id`. قيود: `dispatched_manual` يتطلب رقم الصادر وتاريخه، و`dispatched_integration` يتطلب مرجع التكامل.
+
+**تعديلات على جداول قائمة:**
+- `tasks.tasks`: `status` مفتاح أجنبي لـ `tasks.workflow_statuses` (أُسقطت القيود الثابتة، وحُوّلت الحالات السابقة)؛ `assignee_type` ∈ `member`, `employee`, `org_unit`, `external_entity`؛ أعمدة جديدة: `executor_user_id`، `executor_contact`، `executing_org_unit_id`، `acceptance_criteria`، `external_brief`، `share_resolution_with_entity`، `delay_reason`، `assigned_at`، `accepted_at`، `started_at`، `submitted_at`، `verified_at`، `verified_by`، `completion_method` ∈ `self_declared`, `verified`، `cancelled_at`، `last_escalated_at`، `status_changed_at`، `updated_by`؛ وقيدان: مسؤول المتابعة إلزامي ومختلف عن المنفذ (`NOT VALID` للبيانات السابقة).
+- `tasks.task_updates`: أنواع جديدة (`deliverable`, `review`, `extension_request`, `extension_decision`, `escalation`, `external_update`, `letter`, `edit`)، و`channel`، و`official_channel`، و`reference`، و`received_on`، و`recorded_for_entity_id`، و`visibility` ∈ `internal`, `shared`، و`delay_reason`، و`document_ids`، و`author_user_id` يقبل الفراغ (تحديثات النظام).
+- `bodies.body_policies`: `escalation_rule` (jsonb: `workingDays`, `repeatOverdueEveryDays`, `reviewOverdueDays`, `levels[{level, trigger, offsetDays, notify[]}]`) ضمن إصدار السياسة.
+- `docs.document_links`: `external_visible` (المشاركة مع الجهة الخارجية)، والغرضان `deliverable`, `assignment_letter`.
+
 ## 4. عروض التقارير (RPT)
 
 وحدة RPT لا تملك جداول؛ تقرأ من عروض SQL في مخطط `reporting` يملكها فريق التقنية ويُصدر ترحيلها مع الوحدات:

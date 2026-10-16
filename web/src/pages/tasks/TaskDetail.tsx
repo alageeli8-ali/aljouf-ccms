@@ -293,12 +293,12 @@ function ReviewModal({ card, mode, onClose }: { card: TaskCard; mode: 'verify' |
   const m = useMutation({
     mutationFn: (v: Record<string, any>) => post(`/api/v1/tasks/${card.task.id}/actions/${mode}`, {
       note: v.note, reason: v.reason,
-      deliverableDecisions: card.deliverables.filter((d) => v[`d_${d.id}`]).map((d) => ({ deliverableId: d.id, decision: v[`d_${d.id}`], note: v[`n_${d.id}`] || undefined })),
+      deliverableDecisions: card.deliverables.filter((d) => d.status === 'submitted' && v[`d_${d.id}`]).map((d) => ({ deliverableId: d.id, decision: v[`d_${d.id}`], note: v[`n_${d.id}`] || undefined })),
     }),
     onSuccess: () => { message.success(t('common.saved')); onClose(); },
     onError: (e) => message.error(errorText(e, t('common.error'))),
   });
-  const initial = Object.fromEntries(card.deliverables.filter((d) => d.status === 'submitted' || d.status === 'accepted').map((d) => [`d_${d.id}`, d.status === 'accepted' || mode === 'verify' ? 'accepted' : 'rejected']));
+  const initial = Object.fromEntries(card.deliverables.filter((d) => d.status === 'submitted').map((d) => [`d_${d.id}`, mode === 'verify' ? 'accepted' : 'rejected']));
   return (
     <Modal open width={720} title={mode === 'verify' ? t('tasks4.verifyTitle') : t('tasks4.returnTitle')} onCancel={onClose} onOk={() => form.submit()} confirmLoading={m.isPending}
       okText={mode === 'verify' ? t('tasks4.verifyOk') : t('tasks4.returnOk')} okButtonProps={{ danger: mode === 'return' }} cancelText={t('common.cancel')}>
@@ -307,10 +307,10 @@ function ReviewModal({ card, mode, onClose }: { card: TaskCard; mode: 'verify' |
         {card.deliverables.map((d) => (
           <Card key={d.id} size="small" style={{ marginBottom: 8 }} title={`${d.position}. ${d.title}`} extra={d.required && <Tag>{t('tasks4.requiredShort')}</Tag>}>
             {d.acceptanceCriteria && <div className="item-meta" style={{ marginBottom: 6 }}>{t('tasks4.acceptanceCriteria')}: {d.acceptanceCriteria}</div>}
-            <Space wrap align="start">
-              <Form.Item name={`d_${d.id}`} noStyle><Radio.Group optionType="button" options={[{ value: 'accepted', label: t('tasks4.accept') }, { value: 'rejected', label: t('tasks4.rejectDeliverable') }]} disabled={d.status === 'pending'} /></Form.Item>
+            {d.status !== 'submitted' ? <Tag color={d.status === 'accepted' ? 'green' : d.status === 'rejected' ? 'red' : 'default'}>{t(`tasks4.deliverableStatus.${d.status}`)}</Tag> : <Space wrap align="start">
+              <Form.Item name={`d_${d.id}`} noStyle><Radio.Group optionType="button" options={[{ value: 'accepted', label: t('tasks4.accept') }, { value: 'rejected', label: t('tasks4.rejectDeliverable') }]} /></Form.Item>
               <Form.Item noStyle shouldUpdate>{() => form.getFieldValue(`d_${d.id}`) === 'rejected' && <Form.Item name={`n_${d.id}`} noStyle rules={[{ required: true }]}><Input placeholder={t('tasks4.rejectWhy')} style={{ width: 300 }} /></Form.Item>}</Form.Item>
-            </Space>
+            </Space>}
           </Card>
         ))}
         {mode === 'return'
@@ -352,7 +352,9 @@ export function UpdatesLog({ updates, canComment, taskId, external, onChange, po
           <div>
             <Space wrap size={6}>
               <b>{t(`tasks4.updateType.${u.updateType}`, { defaultValue: u.updateType })}</b>
-              {u.newValue && typeof u.newValue.status === 'string' && <TaskStatusTag status={u.newValue.status} />}
+              {u.newValue && typeof u.newValue.status === 'string' && (u.updateType === 'letter'
+                ? <Tag>{t(`tasks4.letters.status.${u.newValue.status}`)}</Tag>
+                : <TaskStatusTag status={u.newValue.status} />)}
               {u.progressPct != null && <Tag>{u.progressPct}%</Tag>}
               {u.channel !== 'system' && <Tag color={u.channel === 'portal' ? 'purple' : 'orange'}>{t(`tasks4.channel.${u.channel}`)}</Tag>}
               {!portal && u.visibility === 'shared' && external && <Tooltip title={t('tasks4.visibleToEntity')}><Tag>{t('tasks4.shared')}</Tag></Tooltip>}
