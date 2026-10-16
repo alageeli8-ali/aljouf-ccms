@@ -8,10 +8,15 @@ export interface Me {
     calendar: 'gregorian' | 'hijri';
     externalEntityId?: string | null;
     externalEntityName?: string | null;
+    userType?: string;
+    mustChangePassword?: boolean;
   };
   systemRoles: string[];
   bodyRoles: { bodyId: string; role: string }[];
   permissions: string[];
+  /** ممثل جهة خارجية بلا عضوية داخلية: تُعرض له واجهة البوابة فقط */
+  portalUser?: boolean;
+  portalEnabled?: boolean;
 }
 
 export type FeatureMap = Record<string, { enabled: boolean; value: string }>;
@@ -134,7 +139,12 @@ export interface BodyPolicy {
   createdAt: string;
   createdByName?: string | null;
   minutesFlow?: MinutesWorkflow;
+  escalation?: EscalationRule | null;
+  escalationFlow?: EscalationRule;
 }
+
+export interface EscalationLevel { level: number; trigger: string; offsetDays: number; notify: string[] }
+export interface EscalationRule { workingDays: boolean; repeatOverdueEveryDays: number; reviewOverdueDays: number; levels: EscalationLevel[] }
 
 export interface Delegation {
   id: string;
@@ -700,3 +710,106 @@ export interface Motion {
 }
 
 export interface MotionList { canManage: boolean; canCast: boolean; seeIndividual: boolean; items: Motion[] }
+
+// ---------------- المرحلة 4: المهام والتكليفات ----------------
+
+export interface TaskItem {
+  id: string; referenceNo?: string | null; bodyId: string; bodyName: string; bodyCode: string;
+  resolutionId?: string | null; resolutionNumber?: string | null; resolutionTitle?: string | null; resolutionType?: string | null; resolutionStatus?: string | null;
+  meetingId?: string | null; meetingReference?: string | null; agendaItemId?: string | null; agendaItemTitle?: string | null; sourceType: string;
+  titleAr: string; description?: string | null; assigneeType: string; assigneeUserId?: string | null; assigneeOrgUnitId?: string | null; assigneeExternalEntityId?: string | null;
+  assigneeName?: string | null; executorUserId?: string | null; executorName?: string | null; executorContact?: string | null; executingOrgUnitId?: string | null;
+  executingUnitName?: string | null; accountableUserId?: string | null; accountableName?: string | null; verifierUserId?: string | null; verifierName?: string | null;
+  verificationRequired: boolean; priority: string; dueDate?: string | null; originalDueDate?: string | null; status: string; statusCategory: string;
+  statusNameAr: string; statusNameEn: string; statusColor: string; statusReason?: string | null; progressPct: number; escalationLevel: number;
+  isOverdue: boolean; daysOverdue?: number | null; pendingExtension: boolean; deliverablesTotal: number; deliverablesAccepted: number;
+  acceptanceCriteria?: string | null; externalBrief?: string | null; shareResolutionWithEntity: boolean; delayReason?: string | null;
+  correspondenceNo?: string | null; correspondenceDate?: string | null; assignedAt?: string | null; acceptedAt?: string | null; startedAt?: string | null;
+  submittedAt?: string | null; completedAt?: string | null; verifiedAt?: string | null; verifiedByName?: string | null; completionMethod?: string | null;
+  cancelledAt?: string | null; createdAt: string; updatedAt: string;
+}
+
+export interface TaskDeliverable {
+  id: string; position: number; title: string; description?: string | null; acceptanceCriteria?: string | null; required: boolean; status: string;
+  reviewNote?: string | null; reviewedAt?: string | null; reviewedBy?: string | null;
+  submissions: { id: string; note?: string | null; channel: string; createdAt: string; submittedBy: string; documents: { id: string; fileName: string; sha256: string }[] }[];
+}
+
+export interface TaskUpdateEntry {
+  id: string; updateType: string; progressPct?: number | null; note?: string | null; createdAt: string; author?: string | null; authorIsExternal: boolean;
+  channel: string; visibility: string; officialChannel?: string | null; reference?: string | null; receivedOn?: string | null;
+  newValue?: Record<string, unknown> | null; oldValue?: Record<string, unknown> | null; delayReason?: string | null; recordedForEntity?: string | null; documentIds: string[];
+}
+
+export interface TaskExtension {
+  id: string; status: string; currentDueDate: string; requestedDueDate: string; approvedDueDate?: string | null; delayCause: string; reason: string;
+  channel: string; reference?: string | null; createdAt: string; requestedBy: string; decidedAt?: string | null; decidedBy?: string | null; decisionNote?: string | null;
+}
+
+export interface TaskEscalation {
+  id: string; kind: string; level: number; trigger: string; reason?: string | null; createdAt: string; daysOverdue?: number | null; createdBy?: string | null;
+  recipients: { userId: string; name: string; role: string; unit?: string | null }[];
+  acknowledgedAt?: string | null; acknowledgedBy?: string | null; ackNote?: string | null; canAcknowledge: boolean;
+}
+
+export interface TaskAction { action: string; to?: string; nameAr: string; nameEn: string; requiresReason: boolean }
+
+export interface TaskCard {
+  task: TaskItem; deliverables: TaskDeliverable[]; updates: TaskUpdateEntry[]; extensions: TaskExtension[]; escalations: TaskEscalation[];
+  reviews: { id: string; decision: string; note?: string | null; reviewer: string; createdAt: string; deliverableDecisions: { deliverableId: string; decision: string; note?: string | null }[] }[];
+  letters: { id: string; referenceNo: string; subject: string; status: string; outgoingNo?: string | null; outgoingDate?: string | null; createdAt: string }[];
+  actions: TaskAction[];
+  capabilities: {
+    canManage: boolean; canProgress: boolean; canSubmitDeliverables: boolean; canComment: boolean; canRequestExtension: boolean; canDecideExtension: boolean;
+    canRecordExternal: boolean; canEscalate: boolean; canLetters: boolean; canShareDocuments: boolean; isExecutor: boolean; isFollowUp: boolean; isVerifier: boolean;
+    portalEnabled: boolean;
+  };
+  permissions: string[];
+}
+
+export interface WorkflowStatus { code: string; nameAr: string; nameEn: string; category: string; color: string; sortOrder: number; isSystem: boolean; active: boolean; tasks: number }
+export interface WorkflowTransition {
+  id: string; action: string; from: string; to: string; nameAr: string; nameEn: string; permission: string; actors: string[]; requiresReason: boolean;
+  isSystem: boolean; active: boolean; sortOrder: number;
+}
+export interface TaskWorkflow { statuses: WorkflowStatus[]; transitions: WorkflowTransition[]; actors: string[]; permissions: string[]; canManage: boolean }
+
+export interface TaskGroupRow { key?: string | null; name?: string | null; kind?: string | null; total: number; open: number; completed: number; overdue: number; avgProgress: number; completionRate: number }
+export interface TaskDashboard {
+  kpis: {
+    total: number; open: number; completed: number; cancelled: number; overdue: number; dueSoon: number; pendingReview: number; onHold: number; rejected: number;
+    completedOnTime: number; avgProgress: number; escalated: number; pendingExtensions: number; completionRate: number; onTimeRate: number; overdueRate: number;
+  };
+  byStatus: { status: string; nameAr: string; nameEn: string; color: string; category: string; count: number }[];
+  byPriority: TaskGroupRow[]; byBody: TaskGroupRow[]; byExecutor: TaskGroupRow[];
+  byDue: { bucket: string; count: number }[];
+  topOverdue: { id: string; referenceNo?: string | null; titleAr: string; executorName?: string | null; dueDate?: string | null; daysOverdue: number; escalationLevel: number; bodyName: string; priority: string }[];
+  executive: { id: string; referenceNo?: string | null; titleAr: string; executorName?: string | null; dueDate?: string | null; escalationLevel: number; bodyName: string; lastEscalated?: string | null }[];
+  generatedAt: string;
+}
+
+export interface BoardColumn { status: string; nameAr: string; nameEn: string; category: string; color: string; items: TaskItem[] }
+
+export interface PortalTask {
+  id: string; referenceNo?: string | null; titleAr: string; description?: string | null; externalBrief?: string | null; acceptanceCriteria?: string | null;
+  priority: string; dueDate?: string | null; originalDueDate?: string | null; status: string; statusNameAr: string; statusNameEn: string; statusCategory: string;
+  statusColor: string; progressPct: number; assignedAt?: string | null; acceptedAt?: string | null; submittedAt?: string | null; completedAt?: string | null;
+  assigningBody: string; followUpName?: string | null; followUpEmail?: string | null; resolutionNumber?: string | null; resolutionTitle?: string | null;
+  resolutionText?: string | null; isOverdue: boolean; pendingExtension: boolean; statusReason?: string | null; correspondenceNo?: string | null; correspondenceDate?: string | null;
+}
+
+export interface PortalCard {
+  task: PortalTask; actions: TaskAction[]; deliverables: TaskDeliverable[]; updates: TaskUpdateEntry[]; extensions: TaskExtension[];
+  documents: { id: string; fileName: string; sizeBytes: number; uploadedAt: string; purpose: string; uploadedBy: string; fromEntity: boolean }[];
+  letters: { id: string; referenceNo: string; subject: string; outgoingNo?: string | null; outgoingDate?: string | null }[];
+  capabilities: { canProgress: boolean; canSubmitDeliverables: boolean; canRequestExtension: boolean; canComment: boolean };
+}
+
+export interface PortalMe { entityId: string; entityNameAr: string; entityNameEn?: string | null; open: number; awaitingAcknowledgement: number; overdue: number; completed: number }
+
+export interface AssignmentLetter {
+  id: string; referenceNo: string; bodyId: string; resolutionId?: string | null; recipientType: string; recipientName: string; recipientAttention?: string | null;
+  subject: string; bodyText: string; dueDate?: string | null; taskIds: string[]; attachmentIds: string[]; shareWithEntity: boolean; status: string;
+  outgoingNo?: string | null; outgoingDate?: string | null; pdfDocumentId?: string | null; createdAt: string; createdByName?: string | null; approvedAt?: string | null;
+  approvedByName?: string | null; dispatchChannel?: string | null; dispatchedAt?: string | null; cancelReason?: string | null; integrationRef?: string | null; officiallySent: boolean;
+}

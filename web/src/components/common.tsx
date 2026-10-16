@@ -9,7 +9,7 @@ const statusColors: Record<string, string> = {
   postponed: 'orange', cancelled: 'red', quorum_failed: 'volcano',
   internal_review: 'gold', member_review: 'gold', pending_signoffs: 'orange', pending_approval: 'purple', approved: 'green', amended: 'default',
   proposed: 'default', issued: 'green', in_execution: 'processing', executed: 'cyan', rejected: 'red', deferred: 'orange', referred: 'purple', superseded: 'default',
-  assigned: 'blue', pending_verification: 'purple', completed: 'green', returned: 'volcano', on_hold: 'orange',
+  assigned: 'blue', pending_verification: 'purple', pending_review: 'purple', completed: 'green', returned: 'volcano', on_hold: 'orange', overdue: 'red', new: 'default',
   requested: 'gold', valid: 'green', invalidated: 'red',
   healthy: 'green', not_configured: 'default', failing: 'red', degraded: 'orange', disabled: 'default',
   succeeded: 'green', rejected_validation: 'orange', confirmation_required: 'gold', denied: 'red', failed: 'red',

@@ -32,12 +32,16 @@ export default function AppLayout() {
   };
 
   const showReports = can('reports.executive') || (me?.bodyRoles.length ?? 0) > 0 || hasRole('governance_officer');
-  const items = [
+  const portalItems = [{ type: 'group' as const, label: collapsed ? null : t('nav.portal'), children: [
+    { key: '/portal', icon: <ExportOutlined />, label: <Link to="/portal">{t('portal.myAssignments')}</Link> },
+    { key: '/notifications', icon: <BellOutlined />, label: <Link to="/notifications">{t('nav.notifications')}</Link> },
+  ] }];
+  const internalItems = [
     { type: 'group' as const, label: collapsed ? null : t('nav.work'), children: [
       { key: '/', icon: <AppstoreOutlined />, label: <Link to="/">{t('nav.dashboard')}</Link> },
       { key: '/tasks', icon: <CheckSquareOutlined />, label: <Link to="/tasks">{t('nav.tasks')}</Link> },
       { key: '/notifications', icon: <BellOutlined />, label: <Link to="/notifications">{t('nav.notifications')}</Link> },
-      ...(hasRole('external_representative') && feature('EXTERNAL_PORTAL_ENABLED')
+      ...(hasRole('external_representative') && feature('EXTERNAL_PORTAL_ENABLED') && !me?.portalUser
         ? [{ key: '/portal', icon: <ExportOutlined />, label: <Link to="/portal">{t('nav.portal')}</Link> }] : []),
     ] },
     { type: 'group' as const, label: collapsed ? null : t('nav.governance'), children: [
@@ -53,6 +57,7 @@ export default function AppLayout() {
       ...(can('admin.settings.view') ? [{ key: '/settings', icon: <SettingOutlined />, label: <Link to="/settings">{t('nav.settings')}</Link> }] : []),
     ] }] : []),
   ];
+  const items = me?.portalUser ? portalItems : internalItems;
   const selected = '/' + (loc.pathname.split('/')[1] ?? '');
   const name = lang === 'en' ? me?.user.displayNameEn ?? me?.user.displayNameAr : me?.user.displayNameAr;
   const roles = [...new Set([...(me?.systemRoles ?? []).filter((r) => r !== 'employee'), ...(me?.bodyRoles ?? []).map((b) => b.role)])];
@@ -85,6 +90,7 @@ export default function AppLayout() {
                 items: [
                   { key: 'roles', disabled: true, label: roles.map((r) => t(`roles.${r}`)).join('، ') || t('roles.employee') },
                   { type: 'divider' },
+                  { key: 'password', icon: <IdcardOutlined />, label: t('portal.changePassword'), onClick: () => nav('/account/password') },
                   { key: 'logout', icon: <LogoutOutlined />, label: t('common.logout'), onClick: () => void logout().then(() => nav('/login')) },
                   { key: 'logout-all', icon: <LogoutOutlined />, label: t('common.logoutAll'), onClick: () => void logout(true).then(() => nav('/login')) },
                 ],

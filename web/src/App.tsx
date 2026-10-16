@@ -14,7 +14,7 @@ import MembershipsPage from './pages/MembershipsPage';
 import { MinutesDetailPage, MinutesListPage, ResolutionDetailPage, ResolutionsPage, TemplatesPage } from './pages/MinutesPages';
 import { NotificationsPage, ReportsPage } from './pages/ReportsAndNotifications';
 import SettingsPage from './pages/SettingsPage';
-import { PortalPage, TasksPage } from './pages/TasksPages';
+import { ChangePasswordPage, LetterPage, PortalHome, PortalTaskPage, TaskDetailPage, TasksPage, WorkflowPage } from './pages/TasksPages';
 import UsersPage from './pages/UsersPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -22,6 +22,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const loc = useLocation();
   if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100vh' }}><Spin size="large" /></div>;
   if (!me) return <Navigate to={`/login?returnUrl=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  // حساب الجهة الخارجية: تغيير كلمة المرور المؤقتة أولًا، ثم البوابة فقط (الخادم يفرض الأمرين أيضًا)
+  if (me.portalUser && me.user.mustChangePassword && loc.pathname !== '/account/password') return <Navigate to="/account/password" replace />;
+  if (me.portalUser && !loc.pathname.startsWith('/portal') && !['/account/password', '/notifications'].includes(loc.pathname)) return <Navigate to="/portal" replace />;
   return <>{children}</>;
 }
 
@@ -51,8 +54,12 @@ export default function App() {
         <Route path="resolutions" element={<ResolutionsPage />} />
         <Route path="resolutions/:id" element={<ResolutionDetailPage />} />
         <Route path="tasks" element={<TasksPage />} />
-        <Route path="tasks/:id" element={<TasksPage />} />
-        <Route path="portal" element={<PortalPage />} />
+        <Route path="tasks/workflow" element={<RequirePermission permission="task.workflow.manage"><WorkflowPage /></RequirePermission>} />
+        <Route path="tasks/letters/:id" element={<LetterPage />} />
+        <Route path="tasks/:id" element={<TaskDetailPage />} />
+        <Route path="portal" element={<PortalHome />} />
+        <Route path="portal/tasks/:id" element={<PortalTaskPage />} />
+        <Route path="account/password" element={<ChangePasswordPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="users" element={<RequirePermission permission="admin.users.manage"><UsersPage /></RequirePermission>} />

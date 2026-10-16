@@ -75,3 +75,66 @@ body { background: #f4f5f1; -webkit-font-smoothing: antialiased; }
 .ballot .vote-against { border-color: #b42318; color: #b42318; }
 .eligible-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
 .method-note { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: #fbf6ef; border: 1px solid #ead9c3; font-size: 13px; line-height: 1.7; }
+
+/* ===== المرحلة 4: المهام والتكليفات ===== */
+/* ألوان المؤشرات: مكتملة/مفتوحة في الموعد/متأخرة — مُتحقق منها لعمى الألوان (validate_palette: ALL PASS) */
+:root { --task-done: #006837; --task-open: #3f9a6a; --task-late: #c62828; --task-warn: #b26a00; }
+.due-overdue { color: var(--task-late); font-weight: 600; }
+
+.kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.kanban-col { background: #fff; border: 1px solid #e6e9e3; border-radius: 10px; padding: 10px; min-height: 160px; display: flex; flex-direction: column; gap: 8px; }
+.kanban-col.cat-done { background: #f6faf7; }
+.kanban-col.cat-closed { background: #f7f7f6; }
+.kanban-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 6px; border-bottom: 1px solid #eef0ec; }
+.kanban-count { font-weight: 600; color: #5f6b64; font-variant-numeric: tabular-nums; }
+.kanban-card { display: block; background: #fbfcfa; border: 1px solid #e6e9e3; border-inline-start: 3px solid var(--task-open); border-radius: 8px; padding: 8px 10px; color: inherit; transition: box-shadow .15s; }
+.kanban-card:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, .08); color: inherit; }
+.kanban-card.overdue { border-inline-start-color: var(--task-late); }
+.kanban-card-head, .kanban-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; }
+.kanban-title { margin: 6px 0; font-weight: 500; line-height: 1.5; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi-tile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; background: #fff; border: 1px solid #e6e9e3; border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+.kpi-tile:disabled { cursor: default; }
+.kpi-tile:not(:disabled):hover, .kpi-tile:focus-visible { border-color: #006837; }
+.kpi-tile.selected { border-color: #006837; box-shadow: inset 0 0 0 1px #006837; }
+.kpi-value { font-size: 26px; font-weight: 700; color: #1f2a24; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.kpi-label { color: #5f6b64; font-size: 13px; }
+/* حالة المؤشر بلون + شريط جانبي (لا يعتمد على اللون وحده: النص يذكر «متأخرة») */
+.kpi-tile.tone-critical { border-inline-start: 4px solid var(--task-late); }
+.kpi-tile.tone-critical .kpi-value { color: var(--task-late); }
+.kpi-tile.tone-warning { border-inline-start: 4px solid var(--task-warn); }
+.kpi-tile.tone-warning .kpi-value { color: var(--task-warn); }
+
+.group-bars { display: flex; flex-direction: column; gap: 4px; }
+.group-bar-row { all: unset; box-sizing: border-box; display: grid; grid-template-columns: minmax(90px, 34%) 1fr 48px; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; cursor: pointer; }
+.group-bar-row:hover, .group-bar-row:focus-visible { background: #f4f6f2; }
+.group-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.group-bar-track { display: flex; gap: 2px; height: 10px; background: #f0f2ee; border-radius: 4px; overflow: hidden; }
+.group-bar-fill { display: block; height: 100%; }
+.group-bar-fill:first-child { border-start-start-radius: 4px; border-end-start-radius: 4px; }
+.group-bar-fill.done { background: var(--task-done); }
+.group-bar-fill.open { background: var(--task-open); }
+.group-bar-fill.late { background: var(--task-late); }
+.group-bar-num { text-align: end; font-size: 12px; color: #5f6b64; font-variant-numeric: tabular-nums; }
+.group-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 12px; color: #5f6b64; }
+.group-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: 4px; vertical-align: -1px; }
+.sw.done { background: var(--task-done); } .sw.open { background: var(--task-open); } .sw.late { background: var(--task-late); }
+
+.deliverable-card { margin-bottom: 10px; border-inline-start: 3px solid #d9ddd5; }
+.deliverable-card.st-submitted { border-inline-start-color: #1677ff; }
+.deliverable-card.st-accepted { border-inline-start-color: var(--task-done); }
+.deliverable-card.st-rejected { border-inline-start-color: var(--task-late); }
+.submission { padding: 6px 0; border-top: 1px dashed #e6e9e3; font-size: 13px; }
+.submission:first-child { border-top: 0; }
+.ack { color: var(--task-done); font-size: 13px; margin-top: 4px; }
+
+.esc-level-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 8px; margin-bottom: 8px; background: #fafbf9; border: 1px solid #eef0ec; border-radius: 8px; }
+.esc-level-row > .ant-tag { margin-top: 5px; }
+.esc-level-row .ant-form-item { margin-bottom: 0; }
+
+@media (max-width: 640px) {
+  .kanban { grid-auto-columns: 82%; }
+  .group-bar-row { grid-template-columns: 1fr 40px; }
+  .group-bar-label { grid-column: 1 / -1; }
+}
