@@ -49,11 +49,11 @@ public sealed class Phase3Suite(TestContext ctx)
         return await c.PostContentAsync("/api/v1/documents", content);
     }
 
-    private object Policy(bool chairRequired, string signatures, bool chairReview, bool memberReview, string finalApproval, string threshold = "majority_of_votes_cast") => new
+    private object Policy(bool chairRequired, string signatures, bool chairReview, bool memberReview, string finalApproval, string threshold = "majority_of_votes_cast", bool circulation = false) => new
     {
         effectiveFrom = Today, quorumType = "majority", chairRequired, countRemote = true, allowOverride = false,
         votingThreshold = threshold, abstentions = "excluded", tieBreaker = "chair_casting_vote", secretAllowed = true, signoffRequired = signatures != "none",
-        minutesReviewDays = 3, extensionApprover = "secretary", allowProxy = true, maxProxiesPerMember = 1, allowRemoteAttendance = true, allowCirculation = false,
+        minutesReviewDays = 3, extensionApprover = "secretary", allowProxy = true, maxProxiesPerMember = 1, allowRemoteAttendance = true, allowCirculation = circulation,
         reason = "سياسة اختبار المرحلة 3", minutesSecretaryReview = false, minutesChairReview = chairReview, minutesMemberReview = memberReview,
         minutesSignatures = signatures, minutesSignatureFallback = "attestation", minutesFinalApproval = finalApproval,
     };
@@ -559,5 +559,33 @@ public sealed class Phase3Suite(TestContext ctx)
         var activity = (await sec.GetJsonAsync($"/api/v1/minutes/{_minutes}/activity")).AsArray();
         foreach (var action in new[] { "minutes.created", "minutes.submitted", "minutes.returned", "minutes.signed_off", "minutes.approved", "minutes.amendment_opened" })
             Check.That(activity.Any(x => x.S("action") == action), "السجل الزمني: " + action);
+    }
+
+    [Test("P3-12", "التصويت بالتمرير حين تجيزه السياسة: كل الأعضاء المصوتين مؤهلون، ويُغلق آليًا بالإجماع المطلوب", 12)]
+    public async Task CirculationVoting()
+    {
+        var circ = await Body("P3-CIRC", "permanent_committee", "لجنة البيانات المفتوحة",
+            [("bchair", "chair"), ("bsec", "secretary"), ("bm1", "member"), ("m1", "member")],
+            Policy(chairRequired: false, signatures: "none", chairReview: false, memberReview: false, finalApproval: "chair", threshold: "unanimity", circulation: true));
+        var bsec = await As("bsec");
+        var mt = (await Check.Status(await bsec.PostAsync("/api/v1/meetings", new
+        { bodyId = circ, titleAr = "تمرير اعتماد دليل البيانات", meetingType = "circulation", startsAt = DateTime.UtcNow.AddMinutes(5), circulationDeadline = DateTime.UtcNow.AddDays(3) }), 201, "اجتماع تمرير")).G("id");
+        await Check.Status(await bsec.PostAsync($"/api/v1/meetings/{mt}/schedule"), 200, "جدولة");
+        await Check.Status(await bsec.PostAsync($"/api/v1/meetings/{mt}/agenda-items", new { titleAr = "اعتماد دليل البيانات المفتوحة" }), 201, "بند");
+        await Check.Status(await bsec.PostAsync($"/api/v1/meetings/{mt}/invitations/send"), 200, "إرسال");
+        var mn = (await Check.Status(await bsec.PostAsync($"/api/v1/meetings/{mt}/minutes"), 201, "محضر التمرير")).G("id");
+        var res = (await Check.Status(await bsec.PostAsync($"/api/v1/minutes/{mn}/resolutions", new { resolutionType = "decision", titleAr = "اعتماد الدليل", textAr = "يعتمد الفريق دليل البيانات المفتوحة." }), 201, "قرار")).G("id");
+        var mo = await Check.Status(await bsec.PostAsync($"/api/v1/meetings/{mt}/motions", new { resolutionId = res, method = "electronic" }), 201, "فتح التمرير");
+        var motions = (await bsec.GetJsonAsync($"/api/v1/meetings/{mt}/motions"))["items"]!.AsArray();
+        Check.That(motions[0]!.S("method") == "circulation" && motions[0]!["eligibleCount"]!.GetValue<int>() == 3 && motions[0]!["deadlineAt"] is not null, "التمرير: كل الأعضاء المصوتين ومهلة الاجتماع");
+        await Check.Status(await (await As("bchair")).PostAsync($"/api/v1/motions/{mo.G("id")}/votes", new { choice = "for" }), 200, "صوت الرئيس");
+        await Check.Status(await (await As("bm1")).PostAsync($"/api/v1/motions/{mo.G("id")}/votes", new { choice = "for" }), 200, "صوت bm1");
+        var last = await Check.Status(await (await As("m1")).PostAsync($"/api/v1/motions/{mo.G("id")}/votes", new { choice = "for" }), 200, "صوت m1");
+        Check.That(last!["closed"]!.GetValue<bool>() && last.S("result") == "adopted", "الإجماع بعد تصويت الجميع");
+        await Check.Status(await bsec.PostAsync($"/api/v1/meetings/{mt}/close"), 200, "إغلاق التمرير");
+        var s = await Check.Status(await bsec.PostAsync($"/api/v1/minutes/{mn}/submit", new { }), 200, "رفع محضر التمرير");
+        var r = await Check.Status(await (await As("bchair")).PostAsync($"/api/v1/minutes/{mn}/approve", new { contentHash = s.S("contentHash") }), 200, "اعتماد");
+        Check.Equal($"P3-CIRC/{Year}/001", r!["issued"]!.AsArray().Single()!.GetValue<string>(), "قرار التمرير صدر");
+        Check.Equal("circulation", (await bsec.GetJsonAsync($"/api/v1/resolutions/{res}"))["resolution"].S("adoptionMethod"), "طريقة الاعتماد: بالتمرير");
     }
 }

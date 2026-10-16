@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import dayjs, { type Dayjs } from 'dayjs';
 import { get, put } from '../../api/client';
-import type { BodyPolicy, QuorumRule } from '../../api/types';
+import type { BodyPolicy, MinutesTemplate, QuorumRule } from '../../api/types';
 import { ErrorAlert, errorText } from '../../components/common';
 import { formatDate, formatDateTime } from '../../lib/format';
 
@@ -39,7 +39,19 @@ export function PolicyPanel({ bodyId, canEdit }: { bodyId: string; canEdit: bool
           <Descriptions.Item label={t('policy.allowProxy')}>{yes(p.allowProxy)}{p.allowProxy && ` (${t('policy.maxProxies')}: ${p.maxProxiesPerMember})`}</Descriptions.Item>
           <Descriptions.Item label={t('policy.allowRemote')}>{yes(p.allowRemoteAttendance)}</Descriptions.Item>
           <Descriptions.Item label={t('policy.allowCirculation')}>{yes(p.allowCirculation)}</Descriptions.Item>
-          <Descriptions.Item label={t('policy.signoffRequired')}>{yes(p.signoffRequired)}</Descriptions.Item>
+          <Descriptions.Item label={t('policy.minutesFlow')} span={2}>
+            {p.minutesFlow && (
+              <span>
+                {['draft', ...(p.minutesFlow.secretaryReview ? ['secretary_review'] : []), ...(p.minutesFlow.chairReview ? ['chair_review'] : []),
+                  ...(p.minutesFlow.memberReview ? ['member_review'] : []), ...(p.minutesFlow.signatures !== 'none' ? ['pending_signatures'] : []), 'pending_final_approval', 'approved']
+                  .map((x) => t(`enums.minutesStatus.${x}`)).join(' ← ')}
+              </span>
+            )}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('policy.signatures')}>{p.minutesFlow ? t(`enums.signatureMode.${p.minutesFlow.signatures}`) : '—'}</Descriptions.Item>
+          <Descriptions.Item label={t('policy.signatureFallback')}>{p.minutesFlow ? t(`enums.signoffMethod.${p.minutesFlow.signatureFallback}`) : '—'}</Descriptions.Item>
+          <Descriptions.Item label={t('policy.finalApproval')}>{p.minutesFlow ? t(`enums.finalApproval.${p.minutesFlow.finalApproval}`) : '—'}</Descriptions.Item>
+          <Descriptions.Item label={t('policy.reapproval')}>{p.minutesFlow ? t(`enums.reapproval.${p.minutesFlow.amendmentReapproval}`) : '—'}</Descriptions.Item>
           <Descriptions.Item label={t('policy.reviewDays')}>{p.minutesReviewDays}</Descriptions.Item>
           <Descriptions.Item label={t('policy.extensionApprover')}>{t(`roles.${p.extensionApprover}`)}</Descriptions.Item>
         </Descriptions>
@@ -67,7 +79,9 @@ function PolicyModal({ bodyId, current, onClose }: { bodyId: string; current?: B
   const type = Form.useWatch('quorumType', form) as string;
   const proxy = Form.useWatch('allowProxy', form) as boolean;
   const m = useMutation({
-    mutationFn: (v: Record<string, any>) => put(`/api/v1/bodies/${bodyId}/policy`, { ...v, effectiveFrom: (v.effectiveFrom as Dayjs).format('YYYY-MM-DD') }),
+    mutationFn: (v: Record<string, any>) => put(`/api/v1/bodies/${bodyId}/policy`, {
+      ...v, effectiveFrom: (v.effectiveFrom as Dayjs).format('YYYY-MM-DD'), signoffRequired: v.minutesSignatures !== 'none',
+    }),
     onSuccess: () => { message.success(t('common.saved')); onClose(); },
     onError: (e) => message.error(errorText(e, t('common.error'))),
   });
@@ -83,6 +97,10 @@ function PolicyModal({ bodyId, current, onClose }: { bodyId: string; current?: B
         secretAllowed: c?.voting.secretAllowed ?? false, signoffRequired: c?.signoffRequired ?? false, minutesReviewDays: c?.minutesReviewDays ?? 3,
         extensionApprover: c?.extensionApprover ?? 'secretary', allowProxy: c?.allowProxy ?? false, maxProxiesPerMember: c?.maxProxiesPerMember ?? 1,
         allowRemoteAttendance: c?.allowRemoteAttendance ?? true, allowCirculation: c?.allowCirculation ?? false,
+        minutesSecretaryReview: c?.minutesFlow?.secretaryReview ?? false, minutesChairReview: c?.minutesFlow?.chairReview ?? true,
+        minutesMemberReview: c?.minutesFlow?.memberReview ?? true, minutesSignatures: c?.minutesFlow?.signatures ?? (c?.signoffRequired ? 'present_members' : 'none'),
+        minutesSignatureFallback: c?.minutesFlow?.signatureFallback ?? 'attestation', minutesFinalApproval: c?.minutesFlow?.finalApproval ?? 'chair',
+        minutesAmendmentReapproval: c?.minutesFlow?.amendmentReapproval ?? 'full', minutesTemplateCode: c?.minutesFlow?.templateCode ?? 'standard',
       }}>
         <Row gutter={12}>
           <Col xs={24} md={8}><Form.Item name="effectiveFrom" label={t('policy.effectiveFrom')} rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
@@ -108,13 +126,31 @@ function PolicyModal({ bodyId, current, onClose }: { bodyId: string; current?: B
           <Col xs={24} md={8}><Form.Item name="abstentions" label={t('policy.abstentions')}><Select options={opt('abstentions', ['excluded', 'count_as_against'])} /></Form.Item></Col>
           <Col xs={24} md={8}><Form.Item name="tieBreaker" label={t('policy.tieBreaker')}><Select options={opt('tieBreaker', ['chair_casting_vote', 'motion_fails', 'revote'])} /></Form.Item></Col>
         </Row>
+        <div className="policy-section-title">{t('policy.minutesFlow')}</div>
         <Row gutter={12}>
-          <Col xs={12} md={6}><Form.Item name="signoffRequired" label={t('policy.signoffRequired')} valuePropName="checked"><Switch /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="minutesSecretaryReview" label={t('enums.minutesStatus.secretary_review')} valuePropName="checked"><Switch /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="minutesChairReview" label={t('enums.minutesStatus.chair_review')} valuePropName="checked"><Switch /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="minutesMemberReview" label={t('enums.minutesStatus.member_review')} valuePropName="checked"><Switch /></Form.Item></Col>
           <Col xs={12} md={6}><Form.Item name="minutesReviewDays" label={t('policy.reviewDays')}><InputNumber min={1} max={60} /></Form.Item></Col>
-          <Col xs={24} md={12}><Form.Item name="extensionApprover" label={t('policy.extensionApprover')}><Select options={['secretary', 'chair'].map((v) => ({ value: v, label: t(`roles.${v}`) }))} /></Form.Item></Col>
+        </Row>
+        <Row gutter={12}>
+          <Col xs={24} md={8}><Form.Item name="minutesSignatures" label={t('policy.signatures')}><Select options={opt('signatureMode', ['none', 'present_members', 'present_members_and_chair', 'all_members'])} /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item name="minutesSignatureFallback" label={t('policy.signatureFallback')} extra={t('policy.fallbackHelp')}><Select options={opt('signoffMethod', ['attestation', 'wet_signature'])} /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item name="minutesFinalApproval" label={t('policy.finalApproval')}><Select options={opt('finalApproval', ['chair', 'recorded_external'])} /></Form.Item></Col>
+        </Row>
+        <Row gutter={12}>
+          <Col xs={24} md={8}><Form.Item name="minutesAmendmentReapproval" label={t('policy.reapproval')}><Select options={opt('reapproval', ['full', 'final_only'])} /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item name="minutesTemplateCode" label={t('policy.template')}><TemplateCodeSelect /></Form.Item></Col>
+          <Col xs={24} md={8}><Form.Item name="extensionApprover" label={t('policy.extensionApprover')}><Select options={['secretary', 'chair'].map((v) => ({ value: v, label: t(`roles.${v}`) }))} /></Form.Item></Col>
         </Row>
         <Form.Item name="reason" label={t('common.reason')} rules={[{ required: true, min: 5 }]}><Input.TextArea rows={2} /></Form.Item>
       </Form>
     </Modal>
   );
+}
+
+function TemplateCodeSelect({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
+  const q = useQuery({ queryKey: ['minutes-templates'], queryFn: () => get<MinutesTemplate[]>('/api/v1/minutes/templates') });
+  return <Select value={value} onChange={onChange} loading={q.isLoading}
+    options={(q.data ?? []).filter((x) => x.status === 'active').map((x) => ({ value: x.code, label: x.nameAr }))} />;
 }

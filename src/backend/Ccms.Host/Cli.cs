@@ -134,9 +134,10 @@ internal static class SampleData
                 new { id = Guid.CreateVersion7(), body, gov });
             var policyId = Guid.CreateVersion7();
             await tx.ExecuteAsync("""
-                INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule, allow_proxy, allow_remote_attendance, allow_circulation)
+                INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule, allow_proxy, allow_remote_attendance, allow_circulation, minutes_workflow)
                 VALUES (@policyId, @body, 1, current_date - 30, '{"type":"majority","chairRequired":true,"countRemote":true,"countProxies":true,"allowOverride":false}',
-                        '{"threshold":"majority_of_votes_cast","abstentions":"excluded","tieBreaker":"chair_casting_vote"}', '{"required":true,"maxProxiesPerMember":1}', '{"levels":[]}', true, true, true)
+                        '{"threshold":"majority_of_votes_cast","abstentions":"excluded","tieBreaker":"chair_casting_vote","secretAllowed":true}', '{"required":true,"maxProxiesPerMember":1}', '{"levels":[]}', true, true, true,
+                        '{"secretaryReview":false,"chairReview":true,"memberReview":true,"memberReviewDays":3,"signatures":"present_members","signatureFallback":"attestation","finalApproval":"chair","amendmentReapproval":"full","templateCode":"standard"}')
                 """, new { policyId, body });
             var memberIds = new Dictionary<Guid, Guid>();
             foreach (var (uid, role, voting) in new[] { (chair, "chair", true), (vice, "vice_chair", true), (sec, "secretary", false), (member, "member", true), (member2, "member", true), (observer, "observer", false) })

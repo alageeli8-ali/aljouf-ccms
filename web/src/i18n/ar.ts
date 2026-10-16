@@ -1,5 +1,6 @@
 import { mergeDeep } from './merge';
 import phase2Ar from './phase2.ar';
+import phase3Ar from './phase3.ar';
 
 const ar = {
   app: {
@@ -310,5 +311,5 @@ const ar = {
   },
 };
 
-export default mergeDeep(ar, phase2Ar);
+export default mergeDeep(mergeDeep(ar, phase2Ar), phase3Ar);
 export type Dictionary = typeof ar;

@@ -70,13 +70,14 @@ async function parseProblem(r: Response): Promise<Problem> {
   }
 }
 
-export async function api<T>(method: string, path: string, body?: unknown, init?: { raw?: boolean; retried?: boolean }): Promise<T> {
+export async function api<T>(method: string, path: string, body?: unknown, init?: { raw?: boolean; retried?: boolean; idempotencyKey?: string }): Promise<T> {
   const unsafe = method !== 'GET' && method !== 'HEAD';
   if (unsafe && !csrfToken) await refreshCsrf();
   const isForm = body instanceof FormData;
   const headers: Record<string, string> = { 'Accept-Language': localStorageSafe('ccms.lang') ?? 'ar' };
   if (unsafe && csrfToken) headers['X-CSRF-Token'] = csrfToken;
   if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
+  if (init?.idempotencyKey) headers['Idempotency-Key'] = init.idempotencyKey;
   const r = await fetch(`${BASE}${path}`, {
     method,
     credentials: 'same-origin',
@@ -102,6 +103,17 @@ export async function api<T>(method: string, path: string, body?: unknown, init?
 
 export const get = <T>(path: string, params?: Record<string, unknown>) => api<T>('GET', path + toQuery(params));
 export const post = <T>(path: string, body?: unknown) => api<T>('POST', path, body);
+/** طلب إنشاء بمفتاح منع التكرار: إعادة المحاولة أو النقر المزدوج بالمفتاح نفسه لا تنشئ سجلًا ثانيًا (يُعاد الرد الأول من الخادم). */
+export const postOnce = <T>(path: string, body: unknown, key: string) => api<T>('POST', path, body, { idempotencyKey: key });
+
+export function newRequestKey(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
 export const put = <T>(path: string, body: unknown) => api<T>('PUT', path, body);
 export const patch = <T>(path: string, body: unknown) => api<T>('PATCH', path, body);
 

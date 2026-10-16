@@ -813,6 +813,35 @@ erDiagram
 - `docs.document_links`: مالك جديد `agenda_item`.
 - `iam.users`: `work_phone` (هاتف العمل فقط).
 
+### 3.18 جداول وتعديلات المرحلة 3 (المنفذة فعليًا)
+
+الترحيل V009 هو المرجع الملزم. الإصدارات والأصوات والمشاركة والتحفظات وسجل الاعتماد وسجل حالات القرار **إلحاقية**: حساب التطبيق لا يملك عليها UPDATE ولا DELETE، والمقترح المغلق محمي بمشغل.
+
+#### minutes.templates
+`id`، `code` فريد، `name_ar/en`، `sections` (jsonb: `[{key, titleAr, titleEn, kind ∈ auto|text, source, defaultBody}]`)، `is_default` (قالب افتراضي واحد بفهرس جزئي)، `status` ∈ `active`, `inactive`، `version` يزيد بكل تعديل. مصادر الأقسام الآلية: `meeting_info`, `attendance`, `quorum`, `agenda`, `discussions`, `decisions`, `votes`, `reservations`, `tasks`, `attachments`, `approval`.
+
+#### config.idempotency_keys
+`user_id` + `key` (PK)، `route`، `request_hash`، `status` ∈ `in_progress`, `completed`، `status_code`، `location`، `response` (jsonb). مفتاح منع التكرار لطلبات الإنشاء (ترويسة `Idempotency-Key`): إعادة الطلب نفسه تُرجع الرد الأول، والمفتاح نفسه لطلب مختلف يُرفض.
+
+#### deliberation.reservations
+`id`، `motion_id`، `resolution_id`، `user_id`، `kind` ∈ `reservation`, `dissent`، `text`، `created_at`. التحفظات والآراء المخالفة على القرار (بدل `deliberation.dissents` المصممة)، إلحاقي، وتظهر في المحضر.
+
+**التنفيذ الفعلي لجداول صُممت في §3.4–3.6:**
+- `minutes.minutes`: الحالات `draft`, `secretary_review`, `chair_review`, `member_review`, `pending_signatures`, `pending_final_approval`, `approved`, `returned`؛ و`template_id`، و`workflow` (لقطة دورة الاعتماد من سياسة الجهة المثبتة على الاجتماع)، و`approved_version_id`، و`review_deadline`، و`status_reason`، و`amendment_no` و`amendment_reason` (التعديل بعد الاعتماد على السجل نفسه بإصدار جديد بدل محضر تصحيح منفصل — ADR-018)، و`pdf_document_id` و`pdf_sha256` و`verification_code` الفريد.
+- `minutes.minutes_versions`: `snapshot` (jsonb: الحضور والنصاب وجدول الأعمال والقرارات ونتائج التصويت والتحفظات والمهام والمرفقات مجمدة)، و`change_summary`، و`amendment_no`، و`created_in_status`. البصمة SHA-256 على `{minutesId, versionNo, content, snapshot}` بالتمثيل القانوني لـ jsonb.
+- `minutes.minutes_comments`: `minutes_id`، و`minutes_version_id`، و`anchor` (قسم أو قرار)، و`status` ∈ `open`, `accepted`, `rejected` مع ملاحظة المعالجة.
+- `minutes.minutes_signoffs`: `signer_role`، و`evidence_document_id` (للتوقيع الورقي)، و`invalidated_reason`، و`method_reason` (سبب اختيار الطريقة: `esign`, `esign_disabled`, `esign_not_integrated`).
+- `minutes.minutes_approvals`: سجل إلحاقي لكل قرار في الدورة — `step`، و`decision` ∈ `submitted`, `step_approved`, `returned`, `approved`, `amendment_opened`, `signatures_completed`، و`actor_user_id`، و`acting_capacity`، و`on_behalf_of_user_id` و`delegation_id` (التفويض)، و`method` ∈ `in_system`, `recorded_external`, `attestation`, `wet_signature`, `electronic_signature`، و`content_hash`، و`external_approver/reference/date` و`evidence_document_id` لمسار الاعتماد الخارجي.
+- `resolutions.resolutions`: `category`، و`position`، و`minutes_version_id` (الإصدار المعتمد الذي صدر به)، و`approved_at`، و`authority_text`، و`target_body_id`/`target_authority_text` و`referral_outcome/note/decided_at`، و`responsible_org_unit_id`/`responsible_external_entity_id`/`responsible_text`، و`supersedes_resolution_id` مع `supersede_kind` ∈ `amends`, `revokes`، و`adoption_method`، و`vote_summary`، والحالة `withdrawn`؛ وقيد: لا رقم لقرار غير صادر.
+- `resolutions.resolution_status_history`: منفذ كما صُمم، إلحاقي.
+- `deliberation.motions`: `resolution_id` (المقترح هو القرار المقترح نفسه)، و`round` (إعادة التصويت)، و`method` ∈ `consensus`, `show_of_hands`, `electronic`, `secret`, `circulation`، و`status` ∈ `open`, `closed`, `withdrawn`، و`eligible` (لقطة الأهلية عند الفتح)، و`quorum_snapshot`، و`rule_snapshot`، و`tally`؛ مقترح مفتوح واحد لكل قرار بفهرس جزئي.
+- `deliberation.votes`: `principal_user_id` (الأصيل)، و`cast_by_user_id` (الأصيل أو حامل الإنابة أو البديل)، و`capacity` ∈ `self`, `proxy`, `alternate`, `recorded`؛ في السري يُحذف الاثنان ويُقرَّب الوقت للدقيقة.
+- `deliberation.vote_participation`: PK (`motion_id`, `principal_user_id`) يمنع الصوت المكرر حتى في السري.
+- `bodies.body_policies`: `minutes_workflow` (jsonb: `secretaryReview`, `chairReview`, `memberReview`, `memberReviewDays`, `signatures`, `signatureFallback`, `finalApproval`, `amendmentReapproval`, `templateCode`).
+- `tasks.tasks`: `reference_no` يقبل الفراغ للمهمة المسودة المرتبطة بقرار مقترح؛ تُرقّم عند اعتماد المحضر.
+- `meetings.quorum_checks`: السياق `vote`.
+- `docs.document_links`: الغرض `approval_evidence`.
+
 ## 4. عروض التقارير (RPT)
 
 وحدة RPT لا تملك جداول؛ تقرأ من عروض SQL في مخطط `reporting` يملكها فريق التقنية ويُصدر ترحيلها مع الوحدات:

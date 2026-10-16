@@ -11,7 +11,7 @@ import LoginPage from './pages/LoginPage';
 import MeetingDetailPage from './pages/MeetingDetailPage';
 import MeetingsPage from './pages/MeetingsPage';
 import MembershipsPage from './pages/MembershipsPage';
-import { MinutesDetailPage, MinutesListPage, ResolutionsPage } from './pages/MinutesPages';
+import { MinutesDetailPage, MinutesListPage, ResolutionDetailPage, ResolutionsPage, TemplatesPage } from './pages/MinutesPages';
 import { NotificationsPage, ReportsPage } from './pages/ReportsAndNotifications';
 import SettingsPage from './pages/SettingsPage';
 import { PortalPage, TasksPage } from './pages/TasksPages';
@@ -46,8 +46,10 @@ export default function App() {
         <Route path="meetings" element={<MeetingsPage />} />
         <Route path="meetings/:id" element={<MeetingDetailPage />} />
         <Route path="minutes" element={<MinutesListPage />} />
+        <Route path="minutes/templates" element={<RequirePermission permission="minutes.templates.manage"><TemplatesPage /></RequirePermission>} />
         <Route path="minutes/:id" element={<MinutesDetailPage />} />
         <Route path="resolutions" element={<ResolutionsPage />} />
+        <Route path="resolutions/:id" element={<ResolutionDetailPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="tasks/:id" element={<TasksPage />} />
         <Route path="portal" element={<PortalPage />} />

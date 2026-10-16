@@ -15,6 +15,8 @@ UPDATE bodies.body_policies SET minutes_workflow = jsonb_build_object(
   'finalApproval', 'chair',
   'amendmentReapproval', 'full',
   'templateCode', 'standard');
+ALTER TABLE bodies.body_policies ALTER COLUMN minutes_workflow SET DEFAULT
+  '{"secretaryReview":false,"chairReview":true,"memberReview":true,"memberReviewDays":3,"signatures":"none","signatureFallback":"attestation","finalApproval":"chair","amendmentReapproval":"full","templateCode":"standard"}';
 ALTER TABLE bodies.body_policies ALTER COLUMN minutes_workflow SET NOT NULL;
 
 -- ============================ قوالب المحاضر ============================

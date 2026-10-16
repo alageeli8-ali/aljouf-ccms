@@ -153,10 +153,14 @@ internal sealed class QuorumService(IBodyPolicyQuery policies)
                 new { id = c.MeetingId }, r => new QuorumAttendance(r.GetGuid(0), r.GetString(1), r.Str("attendance_mode"), r.Uuid("proxy_holder_user_id"), r.Time("left_at")), ct))
                 .ToDictionary(a => a.UserId);
         else
-            attendance = (await sql.QueryAsync("SELECT user_id, response FROM meetings.invitations WHERE meeting_id = @id", new { id = c.MeetingId },
-                r => (User: r.GetGuid(0), Response: r.GetString(1)), ct))
-                .Where(x => x.Response == "accepted")
-                .ToDictionary(x => x.User, x => new QuorumAttendance(x.User, "present", "in_person", null, null));
+            // التوقع: الموافقون على الدعوة؛ والتمرير: يُضاف إليهم من أدلى بصوته في تصويتات الاجتماع
+            attendance = (await sql.QueryAsync("""
+                SELECT user_id FROM meetings.invitations WHERE meeting_id = @id AND response = 'accepted'
+                UNION
+                SELECT p.principal_user_id FROM deliberation.vote_participation p JOIN deliberation.motions m ON m.id = p.motion_id
+                WHERE m.meeting_id = @id AND @circulation::boolean
+                """, new { id = c.MeetingId, circulation = mode == "circulation" }, r => r.GetGuid(0), ct))
+                .Distinct().ToDictionary(u => u, u => new QuorumAttendance(u, "present", "in_person", null, null));
         var delegates = (await sql.QueryAsync("""
             SELECT delegate_user_id FROM iam.delegations WHERE body_id = @body AND scope = 'chair_authority' AND status = 'active' AND valid_from <= now() AND valid_to > now()
             """, new { body = c.BodyId }, r => r.GetGuid(0), ct)).ToHashSet();

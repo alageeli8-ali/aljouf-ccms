@@ -40,3 +40,38 @@ body { background: #f4f5f1; -webkit-font-smoothing: antialiased; }
 .ant-picker-calendar .ant-picker-cell-selected .ant-picker-calendar-date { background: transparent !important; }
 .ant-picker-calendar .ant-picker-cell-selected .ant-picker-calendar-date-value { color: rgba(0,0,0,.88) !important; }
 .ant-picker-calendar .ant-picker-cell-in-view.ant-picker-cell-today .ant-picker-calendar-date { border-top-color: #006837; background: #f3f8f4; }
+
+/* المرحلة 3: محرر المحضر، والقرارات، والتصويت */
+.minutes-doc { max-width: 980px; }
+.minutes-section { padding: 12px 0 16px; border-bottom: 1px dashed #e4e7e2; }
+.minutes-section:last-of-type { border-bottom: 0; }
+.minutes-section > h3 { font-size: 16px; font-weight: 600; color: #006837; margin: 0 0 10px; padding-inline-start: 10px; border-inline-start: 4px solid #B28655; }
+.minutes-savebar { position: sticky; top: 8px; z-index: 5; margin-bottom: 12px; }
+.auto-tag { margin-bottom: 8px; background: #f3f8f4; border-color: #cfe3d6; color: #00512b; }
+.minutes-item { margin-bottom: 14px; }
+.minutes-agenda { margin: 0; padding-inline-start: 22px; }
+.minutes-agenda li { margin-bottom: 4px; }
+.minutes-list { margin: 0; padding-inline-start: 20px; }
+.minutes-list li { margin-bottom: 4px; }
+.resolution-card { border: 1px solid #e4e7e2; border-inline-start: 4px solid #006837; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }
+.resolution-card.recommendation { border-inline-start-color: #6b4fbb; }
+.resolution-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.policy-list { list-style: none; margin: 0; padding: 0; }
+.policy-list li { padding: 3px 0; }
+.policy-section-title { font-weight: 600; color: #006837; margin: 4px 0 8px; padding-top: 8px; border-top: 1px solid #eef0ec; }
+.comment-card.accepted { opacity: .8; border-inline-start: 3px solid #52c41a; }
+.comment-card.rejected { opacity: .7; border-inline-start: 3px solid #bfbfbf; }
+.diff-old { background: #fdeceb; white-space: pre-wrap; display: block; padding: 2px 4px; }
+.diff-new { background: #e8f3ec; white-space: pre-wrap; display: block; padding: 2px 4px; }
+.vote-bars { display: grid; gap: 6px; }
+.vote-bar-row { display: grid; grid-template-columns: 80px 1fr 28px; align-items: center; gap: 8px; }
+.vote-bar-track { height: 10px; background: #f0f1ee; border-radius: 5px; overflow: hidden; }
+.vote-bar-fill { height: 100%; border-radius: 5px; }
+.vote-bar-num { text-align: center; }
+.motion-open { background: #f7faf8; border: 1px solid #d6e8dc; border-radius: 8px; padding: 10px 12px; }
+.motion-closed { padding: 4px 0; }
+.ballot { margin: 10px 0; padding: 8px 10px; background: #fff; border: 1px dashed #cfe3d6; border-radius: 6px; }
+.ballot .vote-for { border-color: #006837; color: #006837; }
+.ballot .vote-against { border-color: #b42318; color: #b42318; }
+.eligible-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.method-note { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: #fbf6ef; border: 1px solid #ead9c3; font-size: 13px; line-height: 1.7; }

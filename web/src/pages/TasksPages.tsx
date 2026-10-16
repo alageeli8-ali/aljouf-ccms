@@ -1,18 +1,18 @@
-import { App, Button, Card, DatePicker, Descriptions, Drawer, Form, Input, InputNumber, Modal, Progress, Radio, Select, Space, Switch, Table, Tag, Timeline, Typography } from 'antd';
+import { Alert, App, Button, Card, DatePicker, Descriptions, Drawer, Form, Input, InputNumber, Modal, Progress, Radio, Select, Space, Switch, Table, Tag, Timeline, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type { Dayjs } from 'dayjs';
-import { get, post, type Paged } from '../api/client';
+import { get, newRequestKey, post, postOnce, type Paged } from '../api/client';
 import type { Task, TaskUpdate } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorAlert, PageHeader, StatusTag, errorText } from '../components/common';
 import { BodySelect, EntitySelect, EnumSelect, OrgUnitSelect, UserSelect } from '../components/pickers';
 import { dualDate, formatDateTime } from '../lib/format';
 
-const STATUSES = ['assigned', 'in_progress', 'pending_verification', 'completed', 'returned', 'on_hold', 'cancelled'];
+const STATUSES = ['draft', 'assigned', 'in_progress', 'pending_verification', 'completed', 'returned', 'on_hold', 'cancelled'];
 
 function useTaskColumns() {
   const { t, i18n } = useTranslation();
@@ -138,14 +138,16 @@ function TaskDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
-function CreateTaskModal({ onClose }: { onClose: () => void }) {
+/** إنشاء مهمة؛ من القرار تُربط به (وتبقى مسودة حتى اعتماد المحضر إن كان القرار مقترحًا). */
+export function CreateTaskModal({ onClose, bodyId, resolutionId, resolutionTitle }: { onClose: () => void; bodyId?: string; resolutionId?: string; resolutionTitle?: string }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const qc = useQueryClient();
   const [form] = Form.useForm();
   const type = Form.useWatch('assigneeType', form);
+  const [key] = useState(newRequestKey);
   const m = useMutation({
-    mutationFn: (v: Record<string, unknown>) => post('/api/v1/tasks', v),
+    mutationFn: (v: Record<string, unknown>) => postOnce('/api/v1/tasks', { ...v, bodyId: bodyId ?? v.bodyId, resolutionId }, key),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['tasks'] }); message.success(t('common.saved')); onClose(); },
     onError: (e) => message.error(errorText(e, t('common.error'))),
   });
@@ -153,7 +155,8 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
     <Modal open title={t('tasks.new')} onCancel={onClose} onOk={() => form.submit()} confirmLoading={m.isPending} okText={t('common.create')} cancelText={t('common.cancel')} width={620}>
       <Form form={form} layout="vertical" initialValues={{ assigneeType: 'user', priority: 'normal', verificationRequired: true }}
         onFinish={(v) => m.mutate({ ...v, dueDate: (v.dueDate as Dayjs).format('YYYY-MM-DD') })}>
-        <Form.Item name="bodyId" label={t('common.body')} rules={[{ required: true }]}><BodySelect activeOnly /></Form.Item>
+        {resolutionTitle && <Alert type="info" showIcon style={{ marginBottom: 12 }} message={`${t('tasks.fromResolution')}: ${resolutionTitle}`} description={t('tasks.draftUntilApproval')} />}
+        {!bodyId && <Form.Item name="bodyId" label={t('common.body')} rules={[{ required: true }]}><BodySelect activeOnly /></Form.Item>}
         <Form.Item name="titleAr" label={t('common.title')} rules={[{ required: true, max: 300 }]}><Input /></Form.Item>
         <Form.Item name="description" label={t('common.details')}><Input.TextArea rows={2} /></Form.Item>
         <Form.Item name="assigneeType" label={t('tasks.assigneeType')}>

@@ -357,6 +357,12 @@ internal static class Agenda
     /// <summary>عند إغلاق الاجتماع: البنود غير المنظورة تُؤجل آليًا إلى قائمة البنود المعلقة للجهة.</summary>
     public static async Task<int> DeferRemainingAsync(ISql tx, Guid meetingId, Guid bodyId, Guid by, string reason, CancellationToken ct)
     {
+        // البند الذي صدر عنه قرار أو توصية في المحضر نوقش فعلًا؛ لا يُؤجل
+        await tx.ExecuteAsync("""
+            UPDATE meetings.agenda_items ai SET status = 'discussed'
+            WHERE ai.meeting_id = @meetingId AND ai.status = 'pending'
+              AND EXISTS (SELECT 1 FROM resolutions.resolutions r WHERE r.agenda_item_id = ai.id AND r.status <> 'withdrawn')
+            """, new { meetingId }, ct);
         var n = await tx.ExecuteAsync("""
             INSERT INTO meetings.pending_items (id, body_id, source_item_id, source_body_id, kind, title_ar, description_ar, reason, created_by)
             SELECT gen_random_uuid(), @bodyId, id, @bodyId, 'deferred', title_ar, description_ar, @reason, @by

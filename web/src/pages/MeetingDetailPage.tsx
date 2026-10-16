@@ -17,6 +17,7 @@ import { formatDate, formatDateTime } from '../lib/format';
 import { MeetingFormModal } from './MeetingsPage';
 import { AgendaEditor } from './meeting/Agenda';
 import { AttendancePanel, QuorumPanel } from './meeting/Attendance';
+import { VotingPanel } from './meeting/Voting';
 
 export default function MeetingDetailPage() {
   const { id } = useParams();
@@ -149,6 +150,7 @@ export default function MeetingDetailPage() {
           { key: 'attendance', label: <span>{t('meetings.tabs.attendance')} {pendingResponses > 0 && <Badge count={pendingResponses} size="small" />}</span>,
             children: <AttendancePanel meeting={m} invitees={invitees.data ?? []} loading={invitees.isLoading} agenda={agenda} permissions={permissions} onChange={refresh} /> },
           { key: 'quorum', label: t('meetings.tabs.quorum'), children: <QuorumPanel meetingId={id!} canCheck={attend} /> },
+          { key: 'voting', label: t('meetings.tabs.voting'), children: <VotingPanel meeting={m} /> },
           { key: 'activity', label: t('meetings.tabs.activity'), children: <ActivityTimeline url={`/api/v1/meetings/${id}/activity`} queryKey={['meeting-activity', id]} /> },
         ]} />
       </Card>
