@@ -23,10 +23,10 @@ public static class Roles
 {
     public const string SystemAdmin = "system_admin", GovernanceOfficer = "governance_officer", Executive = "executive",
         Auditor = "auditor", ExternalRepresentative = "external_representative", Employee = "employee",
-        Chair = "chair", ViceChair = "vice_chair", Secretary = "secretary", Member = "member", Observer = "observer",
+        Chair = "chair", ViceChair = "vice_chair", Secretary = "secretary", Member = "member", Alternate = "alternate", Observer = "observer",
         TaskExecutor = "task_executor", TaskFollowUp = "task_follow_up";
 
-    public static readonly string[] BodyRoles = [Chair, ViceChair, Secretary, Member, Observer];
+    public static readonly string[] BodyRoles = [Chair, ViceChair, Secretary, Member, Alternate, Observer];
     public static readonly string[] SystemRoles = [SystemAdmin, GovernanceOfficer, Executive, Auditor, ExternalRepresentative, Employee];
 }
 
@@ -41,7 +41,9 @@ public static class Permissions
         ResolutionView = "resolution.view", ResolutionManage = "resolution.manage",
         TaskView = "task.view", TaskManage = "task.manage", TaskUpdate = "task.update", TaskVerify = "task.verify",
         DocumentView = "document.view", DocumentUpload = "document.upload", ReportsBody = "reports.body",
-        PortalAccess = "portal.access";
+        PortalAccess = "portal.access",
+        BodyLifecycle = "body.lifecycle.manage", BodyPolicy = "body.policy.manage", BodyDelegate = "body.delegate",
+        MeetingAttendance = "meeting.attendance", MeetingInvite = "meeting.invite";
 }
 
 public enum ScopeType { System, Body, Task, Document, Record }
@@ -226,4 +228,20 @@ public interface IEmailSender
 {
     string ConnectorCode { get; }
     Task SendAsync(string to, string subject, string htmlBody, CancellationToken ct = default);
+}
+
+/// <summary>صلاحيات تنشأ من علاقة مباشرة بسجل لا من العضوية، مثل الضيف المدعو لاجتماع.</summary>
+public interface IRecordRelationProvider
+{
+    string RecordType { get; }
+    Task<IReadOnlySet<string>> GetPermissionsAsync(Guid recordId, Guid userId, CancellationToken ct = default);
+}
+
+public sealed record ActivityEntry(long Seq, DateTime OccurredAt, Guid? ActorUserId, string? ActorName, string Module, string Action,
+    string EntityType, string? EntityId, string Outcome, string? Details);
+
+/// <summary>السجل الزمني لنشاط سجلٍ ما، مقروءًا من سجل التدقيق. الوحدة المستدعية تتحقق من صلاحية الاطلاع على السجل أولًا.</summary>
+public interface IActivityQuery
+{
+    Task<IReadOnlyList<ActivityEntry>> ForEntityAsync(string entityType, Guid entityId, int limit = 200, CancellationToken ct = default);
 }

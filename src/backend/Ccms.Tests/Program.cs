@@ -48,9 +48,11 @@ ctx.App = await AppInstance.StartAsync(hostDll, baseEnv);
 await using (var admin = new PgWireDataSource(ctx.OwnerConnectionString))
     ctx.AdminId = await Ccms.Tests.AdminBootstrap.CreateAsync(new Db(admin));
 results.AddRange(await Runner.RunAsync(new Suite(ctx)));
+results.AddRange(await Runner.RunAsync(new Phase2Suite(ctx)));
 ctx.HistoryCountBeforeRestart = (await ctx.AdminClient!.GetJsonAsync("/api/v1/admin/features/history"))["total"]!.GetValue<long>();
 
 // المرحلة ب: إيقاف ثم تشغيل بإعدادات مختلفة على البيانات نفسها
+var firstApp = ctx.App;
 await ctx.App.StopAsync();
 var restartEnv = new Dictionary<string, string>(baseEnv)
 {
@@ -76,7 +78,7 @@ Console.WriteLine($"\n{passed}/{results.Count} ناجح — {sw.Elapsed.TotalSec
 if (args.Length > 0)
 {
     var md = new StringBuilder();
-    md.AppendLine("# نتائج اختبارات المرحلة 1").AppendLine();
+    md.AppendLine("# نتائج اختبارات المرحلتين 1 و2").AppendLine();
     md.AppendLine($"- التاريخ: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
     md.AppendLine($"- البيئة: PostgreSQL ({server}) — قاعدة جديدة `{dbName}` لكل تشغيل؛ التطبيق يعمل كعملية مستقلة ببيئة Testing");
     md.AppendLine($"- النتيجة: **{passed}/{results.Count} ناجح** خلال {sw.Elapsed.TotalSeconds:0} ثانية").AppendLine();
@@ -87,6 +89,10 @@ if (args.Length > 0)
 }
 if (passed != results.Count)
 {
+    Console.WriteLine("أخطاء التشغيل الأول:");
+    var fl = firstApp.Log.ToList();
+    for (var i = 0; i < fl.Count; i++)
+        if (fl[i].StartsWith("fail")) foreach (var l in fl.Skip(i).Take(4)) Console.WriteLine("  " + l);
     Console.WriteLine("آخر سجلات التطبيق:");
     foreach (var l in restarted.Log.TakeLast(20)) Console.WriteLine("  " + l);
 }

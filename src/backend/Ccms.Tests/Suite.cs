@@ -55,14 +55,14 @@ public sealed class Suite(TestContext ctx)
         await CreateUser("extrep", ["external_representative"], _entity);
 
         // الجهة A بتشكيل كامل، والجهة B بأمين سر آخر
-        _bodyA = (await Check.Status(await gov.PostAsync("/api/v1/bodies", new { code = "QA-COMM", bodyType = "committee", nameAr = "لجنة الاختبار" }), 201, "جهة A")).G("id");
+        _bodyA = (await Check.Status(await gov.PostAsync("/api/v1/bodies", new { code = "QA-COMM", bodyType = "permanent_committee", nameAr = "لجنة الاختبار", nameEn = "QA Committee" }), 201, "جهة A")).G("id");
         foreach (var (u, role) in new[] { ("chair", "chair"), ("vice", "vice_chair"), ("secretary", "secretary"), ("member", "member"), ("observer", "observer") })
             await Check.Status(await gov.PostAsync($"/api/v1/bodies/{_bodyA}/members", new { userId = _users[u], role }), 201, "عضوية " + u);
         await Check.Status(await gov.PostAsync($"/api/v1/bodies/{_bodyA}/activate"), 200, "تفعيل A");
-        _bodyB = (await Check.Status(await gov.PostAsync("/api/v1/bodies", new { code = "QA-OTHER", bodyType = "council", nameAr = "مجلس آخر" }), 201, "جهة B")).G("id");
+        _bodyB = (await Check.Status(await gov.PostAsync("/api/v1/bodies", new { code = "QA-OTHER", bodyType = "executive_council", nameAr = "مجلس آخر", nameEn = "Other Council" }), 201, "جهة B")).G("id");
 
         var sec = await As("secretary");
-        var m = await Check.Status(await sec.PostAsync("/api/v1/meetings", new { bodyId = _bodyA, titleAr = "اجتماع الاختبار", startsAt = DateTime.UtcNow.AddDays(3) }), 201, "اجتماع");
+        var m = await Check.Status(await sec.PostAsync("/api/v1/meetings", new { bodyId = _bodyA, titleAr = "اجتماع الاختبار", startsAt = DateTime.UtcNow.AddDays(3), location = "قاعة الاختبار" }), 201, "اجتماع");
         _meetingA = m.G("id");
         var sch = await Check.Status(await sec.PostAsync($"/api/v1/meetings/{_meetingA}/schedule"), 200, "جدولة");
         Check.That(sch.S("referenceNo").StartsWith("QA-COMM-"), "ترقيم الاجتماع");
@@ -190,7 +190,7 @@ public sealed class Suite(TestContext ctx)
     public async Task MemberCannotCreateMeeting()
     {
         using var member = await As("member");
-        await Check.Problem(await member.PostAsync("/api/v1/meetings", new { bodyId = _bodyA, titleAr = "x", startsAt = DateTime.UtcNow.AddDays(2) }), 403, "forbidden-action", "عضو");
+        await Check.Problem(await member.PostAsync("/api/v1/meetings", new { bodyId = _bodyA, titleAr = "x", startsAt = DateTime.UtcNow.AddDays(2), location = "ق" }), 403, "forbidden-action", "عضو");
         using var observer = await As("observer");
         await Check.Problem(await observer.PostAsync($"/api/v1/meetings/{_meetingA}/agenda-items", new { titleAr = "بند" }), 403, "forbidden-action", "مراقب");
         using var sec = await As("secretary");
@@ -201,9 +201,9 @@ public sealed class Suite(TestContext ctx)
     public async Task OnlyGovernanceCreatesBodies()
     {
         using var outsider = await As("outsider");
-        await Check.Problem(await outsider.PostAsync("/api/v1/bodies", new { code = "QA-X", bodyType = "committee", nameAr = "س" }), 403, "forbidden-action", "موظف");
+        await Check.Problem(await outsider.PostAsync("/api/v1/bodies", new { code = "QA-X", bodyType = "permanent_committee", nameAr = "س", nameEn = "X" }), 403, "forbidden-action", "موظف");
         using var chair = await As("chair");
-        await Check.Problem(await chair.PostAsync("/api/v1/bodies", new { code = "QA-Y", bodyType = "committee", nameAr = "س" }), 403, "forbidden-action", "رئيس");
+        await Check.Problem(await chair.PostAsync("/api/v1/bodies", new { code = "QA-Y", bodyType = "permanent_committee", nameAr = "س", nameEn = "X" }), 403, "forbidden-action", "رئيس");
     }
 
     [Test("RBAC-04", "الإدارة العليا تطّلع على كل الجهات ولا تعدّلها", 23)]
@@ -288,7 +288,7 @@ public sealed class Suite(TestContext ctx)
         await Check.Status(await gov.PostAsync($"/api/v1/bodies/{_bodyB}/members", new { userId = _users["secretary2"], role = "secretary" }), 201, "أمين سر B");
         await Check.Status(await gov.PostAsync($"/api/v1/bodies/{_bodyB}/members", new { userId = _users["chair"], role = "chair" }), 201, "رئيس B");
         await Check.Status(await gov.PostAsync($"/api/v1/bodies/{_bodyB}/activate"), 200, "التفعيل");
-        await Check.Problem(await gov.PostAsync($"/api/v1/bodies/{_bodyB}/members", new { userId = _users["vice"], role = "chair" }), 409, "duplicate", "رئيس ثانٍ");
+        await Check.Problem(await gov.PostAsync($"/api/v1/bodies/{_bodyB}/members", new { userId = _users["vice"], role = "chair" }), 409, "chair-exists", "رئيس ثانٍ");
     }
 
     [Test("RBAC-11", "إدارة المستخدمين لمدير النظام فقط", 30)]
@@ -433,8 +433,8 @@ public sealed class Suite(TestContext ctx)
         using var gov = await As("gov");
         var r = await Check.Status(await gov.PostAsync("/api/v1/bodies", new { code = "bad code", bodyType = "club", nameAr = "" }), 400, "مدخلات خاطئة");
         Check.That(r!["errors"]!["code"] is not null && r["errors"]!["bodyType"] is not null && r["errors"]!["nameAr"] is not null, "أخطاء لكل حقل");
-        await Check.Problem(await gov.PostAsync("/api/v1/bodies", new { code = "QA-WT", bodyType = "working_team", nameAr = "فريق" }), 400, "validation", "فريق عمل بلا تاريخ انتهاء");
-        await Check.Problem(await gov.PostAsync("/api/v1/bodies", new { code = "QA-COMM", bodyType = "committee", nameAr = "مكرر" }), 409, "duplicate", "رمز مكرر");
+        await Check.Problem(await gov.PostAsync("/api/v1/bodies", new { code = "QA-WT", bodyType = "working_team", nameAr = "فريق", nameEn = "Team" }), 400, "validation", "فريق عمل بلا تاريخ انتهاء");
+        await Check.Problem(await gov.PostAsync("/api/v1/bodies", new { code = "QA-COMM", bodyType = "permanent_committee", nameAr = "مكرر", nameEn = "Dup" }), 409, "duplicate", "رمز مكرر");
     }
 
     [Test("DOC-01", "وثيقة OpenAPI تصف الواجهات وتتاح في بيئة الاختبار", 51)]

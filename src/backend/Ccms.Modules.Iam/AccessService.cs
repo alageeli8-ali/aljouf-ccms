@@ -120,7 +120,11 @@ internal sealed class AccessService(
         var resolver = services.GetServices<IRecordBodyResolver>().FirstOrDefault(r => r.RecordType == type)
             ?? throw new InvalidOperationException($"لا يوجد محلل لنوع السجل {type}");
         var bodyId = await resolver.ResolveBodyAsync(id, ct);
-        return bodyId is null ? [] : await BodyPermissionsAsync(bodyId.Value, ct);
+        HashSet<string> set = bodyId is null ? [] : await BodyPermissionsAsync(bodyId.Value, ct);
+        // صلاحيات العلاقة المباشرة بالسجل، مثل الضيف المدعو إلى اجتماع
+        foreach (var rel in services.GetServices<IRecordRelationProvider>().Where(r => r.RecordType == type))
+            set.UnionWith(await rel.GetPermissionsAsync(id, user.UserId, ct));
+        return set;
     }
 
     private async Task<HashSet<string>> DocumentPermissionsAsync(Guid documentId, CancellationToken ct)

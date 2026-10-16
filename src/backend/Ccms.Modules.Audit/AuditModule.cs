@@ -14,7 +14,10 @@ public sealed class AuditModule : IModule
     public string Code => "AUD";
 
     public void AddServices(IServiceCollection services, IConfiguration configuration)
-        => services.AddScoped<IAuditWriter, AuditWriter>();
+        {
+        services.AddScoped<IAuditWriter, AuditWriter>();
+        services.AddScoped<IActivityQuery, ActivityQuery>();
+    }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
     {
@@ -81,4 +84,17 @@ internal sealed class AuditWriter(Db db, ICurrentUser user) : IAuditWriter
             before = e.Before is null ? null : Json.Serialize(e.Before),
             after = e.After is null ? null : Json.Serialize(e.After),
         }, ct);
+}
+
+internal sealed class ActivityQuery(Db db) : IActivityQuery
+{
+    public async Task<IReadOnlyList<ActivityEntry>> ForEntityAsync(string entityType, Guid entityId, int limit = 200, CancellationToken ct = default) =>
+        await db.QueryAsync("""
+            SELECT a.chain_seq, a.occurred_at, a.actor_user_id, u.display_name_ar, a.module, a.action, a.entity_type, a.entity_id, a.outcome, a.after::text
+            FROM audit.audit_events a LEFT JOIN iam.users u ON u.id = a.actor_user_id
+            WHERE a.entity_type = @entityType AND a.entity_id = @id AND a.outcome = 'success'
+            ORDER BY a.chain_seq DESC LIMIT @limit
+            """, new { entityType, id = entityId.ToString(), limit }, r => new ActivityEntry(
+            r.GetInt64(0), r.GetDateTime(1), r.Uuid("actor_user_id"), r.Str("display_name_ar"), r.GetString(4), r.GetString(5),
+            r.GetString(6), r.Str("entity_id"), r.GetString(8), r.IsDBNull(9) ? null : r.GetString(9)), ct);
 }

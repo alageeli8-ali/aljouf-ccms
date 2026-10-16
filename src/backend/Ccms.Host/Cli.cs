@@ -119,34 +119,61 @@ internal static class SampleData
                 new { entityId, sec });
             await User("external@sample.jsdo.test", "ممثل جهة خارجية (تجريبي)", "External Rep (sample)", Roles.ExternalRepresentative, entityId);
 
+            var alternate = await User("alternate@sample.jsdo.test", "عضو بديل (تجريبي)", "Alternate Member (sample)");
+            var member2 = await User("member2@sample.jsdo.test", "عضو ثانٍ (تجريبي)", "Second Member (sample)");
+            var y = DateTime.UtcNow.Year;
             var body = Guid.CreateVersion7();
             await tx.ExecuteAsync("""
-                INSERT INTO bodies.bodies (id, code, body_type, name_ar, name_en, mandate_ar, classification, status, created_by)
-                VALUES (@body, 'DTC', 'committee', 'لجنة التحول الرقمي (تجريبية)', 'Digital Transformation Committee (sample)',
-                        'الإشراف على مبادرات التحول الرقمي ومتابعة تنفيذها', 'restricted', 'active', @gov)
-                """, new { body, gov });
+                INSERT INTO bodies.bodies (id, code, reference_no, body_type, name_ar, name_en, objective_ar, mandate_ar, authority_ref, meeting_frequency,
+                  formation_decision_no, formation_decision_date, term_start, classification, status, created_by)
+                VALUES (@body, 'DTC', @ref, 'permanent_committee', 'لجنة التحول الرقمي (تجريبية)', 'Digital Transformation Committee (sample)',
+                        'تسريع التحول الرقمي في المكتب', 'الإشراف على مبادرات التحول الرقمي ومتابعة تنفيذها', 'المجلس التنفيذي (تجريبي)', 'monthly',
+                        'ق/1/تجريبي', current_date - 30, current_date - 30, 'restricted', 'active', @gov)
+                """, new { body, gov, @ref = $"BOD-{y}-0001" });
+            await tx.ExecuteAsync("INSERT INTO bodies.body_terms (id, body_id, change_type, term_start, decision_no, decision_date, created_by) VALUES (@id, @body, 'initial', current_date - 30, 'ق/1/تجريبي', current_date - 30, @gov)",
+                new { id = Guid.CreateVersion7(), body, gov });
+            var policyId = Guid.CreateVersion7();
             await tx.ExecuteAsync("""
-                INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule)
-                VALUES (@pid, @body, 1, current_date - 30, '{"type":"majority"}', '{"threshold":"majority_of_votes_cast"}', '{"required":true}', '{"levels":[]}')
-                """, new { pid = Guid.CreateVersion7(), body });
-            foreach (var (uid, role, voting) in new[] { (chair, "chair", true), (vice, "vice_chair", true), (sec, "secretary", false), (member, "member", true), (observer, "observer", false) })
-                await tx.ExecuteAsync("INSERT INTO bodies.body_members (id, body_id, user_id, role, is_voting, start_date) VALUES (@id, @body, @uid, @role, @voting, current_date - 30)",
-                    new { id = Guid.CreateVersion7(), body, uid, role, voting });
+                INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule, allow_proxy, allow_remote_attendance, allow_circulation)
+                VALUES (@policyId, @body, 1, current_date - 30, '{"type":"majority","chairRequired":true,"countRemote":true,"countProxies":true,"allowOverride":false}',
+                        '{"threshold":"majority_of_votes_cast","abstentions":"excluded","tieBreaker":"chair_casting_vote"}', '{"required":true,"maxProxiesPerMember":1}', '{"levels":[]}', true, true, true)
+                """, new { policyId, body });
+            var memberIds = new Dictionary<Guid, Guid>();
+            foreach (var (uid, role, voting) in new[] { (chair, "chair", true), (vice, "vice_chair", true), (sec, "secretary", false), (member, "member", true), (member2, "member", true), (observer, "observer", false) })
+            {
+                var mid = Guid.CreateVersion7();
+                memberIds[uid] = mid;
+                await tx.ExecuteAsync("INSERT INTO bodies.body_members (id, body_id, user_id, role, is_voting, start_date) VALUES (@mid, @body, @uid, @role, @voting, current_date - 30)",
+                    new { mid, body, uid, role, voting });
+            }
+            await tx.ExecuteAsync("INSERT INTO bodies.body_members (id, body_id, user_id, role, is_voting, start_date, alternate_for_member_id) VALUES (@id, @body, @alternate, 'alternate', false, current_date - 30, @principal)",
+                new { id = Guid.CreateVersion7(), body, alternate, principal = memberIds[member] });
 
             var body2 = Guid.CreateVersion7();
             await tx.ExecuteAsync("""
-                INSERT INTO bodies.bodies (id, code, body_type, name_ar, name_en, classification, status, created_by, term_end)
-                VALUES (@body2, 'URBAN-WT', 'working_team', 'فريق عمل المرصد الحضري (تجريبي)', 'Urban Observatory Working Team (sample)', 'restricted', 'draft', @gov, current_date + 180)
-                """, new { body2, gov });
+                INSERT INTO bodies.bodies (id, code, reference_no, body_type, name_ar, name_en, objective_ar, classification, status, created_by, term_start, term_end)
+                VALUES (@body2, 'URBAN-WT', @ref, 'working_team', 'فريق عمل المرصد الحضري (تجريبي)', 'Urban Observatory Working Team (sample)',
+                        'إعداد مؤشرات المرصد الحضري', 'restricted', 'draft', @gov, current_date, current_date + 180)
+                """, new { body2, gov, @ref = $"BOD-{y}-0002" });
+            await tx.ExecuteAsync("INSERT INTO bodies.body_terms (id, body_id, change_type, term_start, term_end, created_by) VALUES (@id, @body2, 'initial', current_date, current_date + 180, @gov)",
+                new { id = Guid.CreateVersion7(), body2, gov });
+            await tx.ExecuteAsync("""
+                INSERT INTO bodies.body_policies (id, body_id, version, effective_from, quorum_rule, voting_rule, signoff_rule, escalation_rule)
+                VALUES (@pid, @body2, 1, current_date, '{"type":"majority"}', '{"threshold":"majority_of_votes_cast"}', '{"required":false}', '{"levels":[]}')
+                """, new { pid = Guid.CreateVersion7(), body2 });
+            await tx.ExecuteAsync("INSERT INTO config.numbering_sequences (scope_key, year, last_value) VALUES ('body', @y, 2) ON CONFLICT (scope_key, year) DO UPDATE SET last_value = GREATEST(config.numbering_sequences.last_value, 2)", new { y });
 
             var meeting = Guid.CreateVersion7();
             await tx.ExecuteAsync("""
-                INSERT INTO meetings.meetings (id, body_id, sequence_year, sequence_no, reference_no, title_ar, starts_at, planned_end_at, location, status, created_by)
+                INSERT INTO meetings.meetings (id, body_id, sequence_year, sequence_no, reference_no, title_ar, starts_at, planned_end_at, location, status, policy_id,
+                  chair_user_id, secretary_user_id, created_by)
                 VALUES (@meeting, @body, extract(year FROM now())::int, 1, 'DTC-' || extract(year FROM now())::int || '-001', 'الاجتماع الأول للجنة',
-                        now() + interval '5 days', now() + interval '5 days 1 hour', 'قاعة الاجتماعات الرئيسية', 'scheduled', @sec)
-                """, new { meeting, body, sec });
+                        now() + interval '5 days', now() + interval '5 days 1 hour', 'قاعة الاجتماعات الرئيسية', 'scheduled', @policyId, @chair, @sec, @sec)
+                """, new { meeting, body, sec, chair, policyId });
             await tx.ExecuteAsync("INSERT INTO config.numbering_sequences (scope_key, year, last_value) VALUES ('meeting:DTC', extract(year FROM now())::int, 1)", null);
-            await tx.ExecuteAsync("INSERT INTO meetings.agenda_items (id, meeting_id, position, title_ar, item_type) VALUES (@id, @meeting, 1, 'اعتماد خطة التحول الرقمي 2027–2030', 'for_decision')",
+            await tx.ExecuteAsync("INSERT INTO meetings.agenda_items (id, meeting_id, position, title_ar, item_type, description_ar, presenter_text, owner_org_unit_id, estimated_minutes) VALUES (@id, @meeting, 1, 'اعتماد خطة التحول الرقمي 2027–2030', 'for_decision', 'عرض مسودة الخطة واعتمادها', 'مدير إدارة (تجريبي)', @unitId, 30)",
+                new { id = Guid.CreateVersion7(), meeting, unitId });
+            await tx.ExecuteAsync("INSERT INTO meetings.agenda_items (id, meeting_id, position, title_ar, item_type, estimated_minutes) VALUES (@id, @meeting, 2, 'متابعة مؤشرات الأداء الربعية', 'for_information', 15)",
                 new { id = Guid.CreateVersion7(), meeting });
 
             var year = DateTime.UtcNow.Year;

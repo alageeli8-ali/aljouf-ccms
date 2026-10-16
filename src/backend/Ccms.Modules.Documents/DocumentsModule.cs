@@ -39,7 +39,7 @@ public sealed class DocumentsModule : IModule
         g.MapGet("/{id:guid}/content", Download);
     }
 
-    private static readonly string[] OwnerTypes = ["body", "meeting", "minutes", "resolution", "task"];
+    private static readonly string[] OwnerTypes = ["body", "meeting", "agenda_item", "minutes", "resolution", "task"];
     private static readonly string[] Purposes = ["formation_decision", "agenda_memo", "attachment", "evidence"];
 
     private static Scope OwnerScope(string type, Guid id) => type switch
