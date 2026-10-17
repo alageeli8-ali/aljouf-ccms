@@ -813,3 +813,54 @@ export interface AssignmentLetter {
   outgoingNo?: string | null; outgoingDate?: string | null; pdfDocumentId?: string | null; createdAt: string; createdByName?: string | null; approvedAt?: string | null;
   approvedByName?: string | null; dispatchChannel?: string | null; dispatchedAt?: string | null; cancelReason?: string | null; integrationRef?: string | null; officiallySent: boolean;
 }
+
+// ============ وحدة التوقيع الإلكتروني ============
+export interface ESignModuleState {
+  enabled: boolean; ready: boolean; reason: string; notice: string;
+  settings: { method: string; methodLabel: string; provider: string; providerName?: string | null; productionGrade: boolean; reauthRequired: boolean;
+    sequential: boolean; pdfOutput: boolean; memberRequired: boolean; chairRequired: boolean; secretaryRequired: boolean };
+}
+export interface ESignSigner {
+  id: string; userId: string; name: string; role: string; step: number; position: number; status: string; signedAt?: string | null; actedBy?: string | null;
+  onBehalf: boolean; declineReason?: string | null; allowDelegation: boolean; signedDocumentSha256?: string | null;
+  certificate?: { subject: string; issuer: string; serial: string; thumbprint: string; notAfter: string; chain: string } | null;
+  reauth?: { method: string; at: string } | null;
+}
+export interface ESignEvent { kind: string; source: string; actor?: string | null; at: string; data: Record<string, unknown> }
+export interface ESignCallback { eventId: string; signatureValid: boolean; outcome: string; detail?: string | null; at: string; event?: string | null }
+export interface ESignRequest {
+  id: string; reference: string; minutesId: string; versionNo: number; contentHash: string; type: string; typeLabel: string; typeNotice: string;
+  provider: string; providerName: string; productionGrade: boolean; status: string; statusReason?: string | null; sequential: boolean;
+  route: { nameAr: string; source: string; steps: { order: number; role: string; allowDelegation: boolean }[]; expiryDays: number };
+  documentId: string; documentSha256: string; documentSize: number; currentDocumentId?: string | null; currentDocumentSha256?: string | null;
+  signedDocumentId?: string | null; signedDocumentSha256?: string | null; expiresAt: string; createdAt: string; completedAt?: string | null;
+  dispatchAttempts: number; lastError?: string | null; nextAttemptAt?: string | null; providerRef?: string | null;
+  verification?: ESignReport | null;
+  signers: ESignSigner[];
+  my: { signerId?: string | null; myStatus?: string | null; canSign: boolean; canOpenProviderSession: boolean; canDecline: boolean; notYourTurn: boolean;
+    reauthRequired: boolean; onBehalf: { signerId: string; userId: string; name: string }[] };
+  manage: { canFallback: boolean; canHold: boolean; canResume: boolean; moduleDisabled: boolean; actionRequired: boolean };
+  events: ESignEvent[]; callbacks: ESignCallback[];
+}
+export interface ESignMinutes {
+  module: ESignModuleState; minutesStatus: string; currentVersionNo: number; canStart: boolean; startBlockedReason?: string | null; requests: ESignRequest[];
+}
+export interface PdfSignatureCheck {
+  index: number; signerName?: string | null; certificateSubject?: string | null; certificateIssuer?: string | null; certificateSerial?: string | null;
+  certificateNotBefore?: string | null; certificateNotAfter?: string | null; signingTime?: string | null; byteRangeValid: boolean; digestMatches: boolean;
+  signatureValid: boolean; certificateValidAtSigning: boolean; chain: string; chainDetail?: string | null; coversWholeDocument: boolean; subsequentChanges: string;
+  revocation: string; timestamp: string; revisionSha256: string; error?: string | null; cryptographicallyValid: boolean;
+}
+export interface ESignReport {
+  checkedAt: string; overall: string; notes: string[]; type?: string; typeLabel?: string; request?: string; legalNotice?: string;
+  document?: { expectedSha256: string; actualSha256?: string | null; intact: boolean; versionNo: number; contentHash: string };
+  signedDocument?: { sha256: string; expectedSha256?: string | null; matchesRecord: boolean; originalPreserved: boolean; modifiedAfterLastSignature: boolean };
+  pdfSignatures?: PdfSignatureCheck[]; signatures?: PdfSignatureCheck[];
+  approvals?: { signer: string; role: string; status: string; at?: string | null; actedBy?: string | null; onBehalf: boolean; documentSha256?: string | null }[];
+  sha256?: string; length?: number; matchesRecord?: { reference: string; type: string; versionNo: number } | null; modifiedAfterLastSignature?: boolean;
+}
+export interface ESignRoute {
+  id: string; bodyId?: string | null; bodyName?: string | null; meetingType?: string | null; nameAr: string; nameEn?: string | null;
+  steps: { order: number; role: string; allowDelegation: boolean }[]; sequential?: boolean | null; signatureType?: string | null; expiryDays: number;
+  active: boolean; version: number; updatedBy?: string | null; updatedAt: string;
+}

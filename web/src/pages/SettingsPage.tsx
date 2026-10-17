@@ -90,8 +90,8 @@ function FlagCard({ category, flags, loading, canManage, onChange }: {
               const disabled = !canManage || f.locked;
               const control = f.valueType === 'boolean'
                 ? <Switch checked={f.value === 'true'} disabled={disabled} onChange={(v) => onChange(f, String(v))} aria-label={f.key} />
-                : <Select size="small" value={f.value} disabled={disabled} style={{ minWidth: 170 }} onChange={(v) => onChange(f, v)}
-                    options={(f.allowedValues ?? []).map((v) => ({ value: v, label: v }))} />;
+                : <Select size="small" value={f.value} disabled={disabled} style={{ minWidth: 200 }} onChange={(v) => onChange(f, v)}
+                    options={(f.allowedValues ?? []).map((v) => ({ value: v, label: t(`settings.enumValues.${v}`, { defaultValue: v }) }))} />;
               return f.locked ? <Tooltip title={t('settings.locked')}><Space>{control}<LockOutlined /></Space></Tooltip> : control;
             },
           },

@@ -138,3 +138,28 @@ body { background: #f4f5f1; -webkit-font-smoothing: antialiased; }
   .group-bar-row { grid-template-columns: 1fr 40px; }
   .group-bar-label { grid-column: 1 / -1; }
 }
+
+/* ===== وحدة التوقيع الإلكتروني ===== */
+.esign-card { border-inline-start: 3px solid #d9ddd5; }
+.esign-card.st-in_progress, .esign-card.st-queued { border-inline-start-color: #1677ff; }
+.esign-card.st-completed { border-inline-start-color: #006837; }
+.esign-card.st-declined, .esign-card.st-failed, .esign-card.st-expired { border-inline-start-color: #c62828; }
+.esign-card.st-on_hold { border-inline-start-color: #b26a00; }
+.esign-steps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.esign-step { border: 1px solid #eef0ec; border-radius: 8px; padding: 8px 10px; background: #fbfcfa; }
+.esign-step-head { font-weight: 600; color: #553d26; margin-bottom: 6px; }
+.esign-signer { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-top: 1px dashed #e6e9e3; }
+.esign-signer:first-of-type { border-top: 0; }
+.esign-pos { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600;
+  background: #f0f2ee; color: #5f6b64; font-variant-numeric: tabular-nums; }
+.esign-signer.st-signed .esign-pos { background: #006837; color: #fff; }
+.esign-signer.st-pending .esign-pos { background: #b26a00; color: #fff; }
+.esign-signer.st-declined .esign-pos { background: #c62828; color: #fff; }
+.esign-manage { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; margin-top: 4px; border-top: 1px solid #eef0ec; }
+.esign-notes { margin: 0; padding-inline-start: 18px; color: #5f6b64; font-size: 13px; }
+.esign-notes li { margin-bottom: 2px; }
+.mock-provider { padding: 8px 0 24px; }
+.mock-banner { max-width: 760px; margin: 0 auto 12px; padding: 10px 14px; border-radius: 8px; background: repeating-linear-gradient(135deg, #fff1f0, #fff1f0 12px, #ffe4e1 12px, #ffe4e1 24px);
+  border: 1px solid #ffa39e; color: #a8071a; font-weight: 600; text-align: center; }
+.route-steps { margin-bottom: 12px; }
+.route-step-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px; margin-bottom: 8px; background: #fafbf9; border: 1px solid #eef0ec; border-radius: 8px; }

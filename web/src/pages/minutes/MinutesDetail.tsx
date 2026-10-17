@@ -131,7 +131,7 @@ export default function MinutesDetailPage() {
             <Tabs activeKey={tab} onChange={(k) => setParams({ tab: k }, { replace: true })} items={[
               { key: 'editor', label: t('minutes.tabs.editor'), children: <MinutesEditor detail={d} onChange={refresh} /> },
               { key: 'comments', label: <span>{t('minutes.tabs.comments')} <Badge count={m.openComments} size="small" /></span>, children: <CommentsPanel detail={d} onChange={refresh} /> },
-              { key: 'signatures', label: t('minutes.tabs.signatures'), children: <SignaturesPanel detail={d} /> },
+              { key: 'signatures', label: t('minutes.tabs.signatures'), children: <SignaturesPanel detail={d} onChange={refresh} /> },
               { key: 'versions', label: t('minutes.tabs.versions'), children: <VersionsPanel minutesId={m.id} /> },
               { key: 'activity', label: t('minutes.tabs.activity'), children: <ActivityTimeline url={`/api/v1/minutes/${m.id}/activity`} queryKey={['minutes-activity', m.id]} /> },
             ]} />

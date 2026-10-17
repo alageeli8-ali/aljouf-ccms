@@ -16,6 +16,7 @@ import { NotificationsPage, ReportsPage } from './pages/ReportsAndNotifications'
 import SettingsPage from './pages/SettingsPage';
 import { ChangePasswordPage, LetterPage, PortalHome, PortalTaskPage, TaskDetailPage, TasksPage, WorkflowPage } from './pages/TasksPages';
 import UsersPage from './pages/UsersPage';
+import { MockProviderPage, SignatureRoutesPage, SignatureVerifyPage } from './pages/esign/ESign';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { me, loading } = useAuth();
@@ -60,6 +61,9 @@ export default function App() {
         <Route path="portal" element={<PortalHome />} />
         <Route path="portal/tasks/:id" element={<PortalTaskPage />} />
         <Route path="account/password" element={<ChangePasswordPage />} />
+        <Route path="esign/mock/:token" element={<MockProviderPage />} />
+        <Route path="signature-verify" element={<SignatureVerifyPage />} />
+        <Route path="signature-routes" element={<RequirePermission permission="esign.routes.manage"><SignatureRoutesPage /></RequirePermission>} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="users" element={<RequirePermission permission="admin.users.manage"><UsersPage /></RequirePermission>} />

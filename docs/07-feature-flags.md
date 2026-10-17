@@ -13,8 +13,8 @@
 | `AI_SMART_SEARCH_ENABLED` | منطقي | AI_ENABLED | `ai.assistant_qa` + `ai.semantic_index` | ai |
 | `AI_AUDIO_TRANSCRIPTION_ENABLED` | منطقي | AI_ENABLED | `ai.transcription` | ai |
 | `E_SIGNATURE_ENABLED` | منطقي | — | `module.esignature` | esign |
-| `E_SIGNATURE_PROVIDER` | قائمة: none, sandbox, national_provider | E_SIGNATURE_ENABLED | `esign.provider` | esign |
-| `E_SIGNATURE_METHOD` | قائمة: remote_certificate, otp_confirmation | E_SIGNATURE_ENABLED | — | esign |
+| `E_SIGNATURE_PROVIDER` | قائمة: none, mock (تجريبي للاختبار فقط، ممنوع في الإنتاج), national_provider (بعد التعاقد) | E_SIGNATURE_ENABLED | `esign.provider` | esign |
+| `E_SIGNATURE_METHOD` | قائمة: in_app_approval (الافتراضي), provider_esign, pdf_digital_signature — الأنواع الثلاثة في 21 §2 | E_SIGNATURE_ENABLED | — | esign |
 | `E_SIGNATURE_MEMBER_REQUIRED` | منطقي | E_SIGNATURE_ENABLED | `esign.attendee_signing` | esign |
 | `E_SIGNATURE_CHAIR_REQUIRED` | منطقي | E_SIGNATURE_ENABLED | `esign.chair_signing` | esign |
 | `E_SIGNATURE_SECRETARY_REQUIRED` | منطقي | E_SIGNATURE_ENABLED | — | esign |
@@ -27,6 +27,8 @@
 | `SSO_ENABLED` | منطقي | — | (جديد) الدخول الموحد عبر Entra ID | sso |
 
 قواعد مطبقة ومختبرة في المرحلة 1: القيمة الفعلية = قيمة المفتاح ∧ المفتاح الأعلى، ويتقدم عليهما قفل البيئة `FeatureManagement:Locks:<KEY>`؛ حالة الإعداد مستقلة عن حالة اتصال المزوّد (`config.connector_status`)؛ كل محاولة تغيير تُسجَّل في `config.feature_flag_history` بالنتيجة (`succeeded`, `rejected_validation`, `confirmation_required`, `denied`, `failed`)؛ والتغيير المؤثر في عمليات جارية يتطلب `confirmImpact=true`. تجاوزات المفاتيح على مستوى الجهة (§2) مؤجلة إلى المرحلة 2.
+
+**تحديث وحدة التوقيع الإلكتروني (V011، 21 §3):** حُوّلت قيم القائمتين السابقتين (`sandbox` ← `mock`، و`otp_confirmation` ← `provider_esign`، وما عداها ← `in_app_approval`). مفاتيح `E_SIGNATURE_*` التسعة كلها تابعة لـ `E_SIGNATURE_ENABLED`، وتُقرأ لكل طلب جديد وتُحفظ لقطة منها في الطلب نفسه، فلا يغيّر تعديلها لاحقًا طلبًا جاريًا. تعطيل `E_SIGNATURE_ENABLED` وطلبات جارية يتطلب تأكيد الأثر، ولا يغيّر حالة أي طلب آليًا (21 §7). ومسارات التوقيع لكل جهة أو نوع اجتماع تُدار في جدول مستقل لا في المفاتيح.
 
 ## 1. الأهداف والضمانات
 

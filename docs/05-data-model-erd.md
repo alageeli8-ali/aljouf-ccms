@@ -712,6 +712,8 @@ erDiagram
 
 ### 3.13 التوقيع (اختياري) — `sig`
 
+> **تصميم أولي حلّ محله المنفذ في §3.20** (الترحيل V011)؛ يبقى هنا للمرجعية.
+
 #### sig.signature_requests
 `id`، `subject_type` ∈ `minutes_version`, `approved_minutes`، `subject_id`، `document_id` (PDF المُوقَّع عليه)، `document_sha256`، `minutes_content_hash`، `signer_user_id`، `signer_role` ∈ `attendee`, `chair`، `provider_code`، `provider_request_ref`، `status` ∈ `pending`, `sent`, `signed`, `declined`, `expired`, `failed`, `cancelled`, `superseded`، `requested_at`، `expires_at`، `completed_at`، `failure_reason`.
 
@@ -875,6 +877,37 @@ erDiagram
 - `tasks.task_updates`: أنواع جديدة (`deliverable`, `review`, `extension_request`, `extension_decision`, `escalation`, `external_update`, `letter`, `edit`)، و`channel`، و`official_channel`، و`reference`، و`received_on`، و`recorded_for_entity_id`، و`visibility` ∈ `internal`, `shared`، و`delay_reason`، و`document_ids`، و`author_user_id` يقبل الفراغ (تحديثات النظام).
 - `bodies.body_policies`: `escalation_rule` (jsonb: `workingDays`, `repeatOverdueEveryDays`, `reviewOverdueDays`, `levels[{level, trigger, offsetDays, notify[]}]`) ضمن إصدار السياسة.
 - `docs.document_links`: `external_visible` (المشاركة مع الجهة الخارجية)، والغرضان `deliverable`, `assignment_letter`.
+
+### 3.20 جداول وتعديلات وحدة التوقيع الإلكتروني (المنفذة فعليًا)
+
+الترحيل V011 هو المرجع الملزم (21 §4). الطلب مرتبط بإصدار ثابت وبنسخة PDF لا تُستبدل؛ وسجل الأحداث إلحاقي؛ وسجل الاستدعاءات الراجعة إلحاقي عدا أعمدة النتيجة والتطبيق.
+
+#### sig.routes
+`id`، `body_id` (فارغ = كل الجهات)، `meeting_type` ∈ `regular`, `extraordinary`, `urgent`, `circulation` (فارغ = كل الأنواع)، `name_ar/en`، `steps` (jsonb: 1–3 مراحل `{order, role ∈ secretary|members|chair, allowDelegation}`؛ التفويض لمرحلة الرئيس فقط)، `sequential` (فارغ = الإعداد المركزي)، `signature_type` (فارغ = الإعداد المركزي)، `expiry_days` (1–90)، `active`، `version` (سبب كل إنشاء وتعديل في سجل التدقيق)؛ مسار نشط واحد لكل (جهة، نوع). الأولوية: الجهة والنوع ← الجهة ← النوع ← العام ← الافتراضي المبني من الإعدادات.
+
+#### sig.requests
+`id`، `reference_no` فريد (`SIG-{السنة}-{تسلسل}`)، `minutes_id`، `minutes_version_id`، `version_no`، `body_id`، `content_hash` (بصمة محتوى الإصدار)، `document_id` و`document_sha256` و`document_size` (نسخة التوقيع)، `signature_type` ∈ `in_app_approval`, `provider_esign`, `pdf_digital_signature`، `provider` (`internal`, `mock`, `national_provider`)، `provider_ref`، `sequential`، `route_id`، `route_snapshot`، `settings_snapshot`، `status` ∈ `queued`, `in_progress`, `on_hold`, `completed`, `declined`, `voided`, `cancelled`, `expired`, `failed`، `status_reason`، `current_document_id`/`current_document_sha256` (آخر مراجعة موقعة)، `signed_document_id`/`signed_document_sha256`، `verification` (jsonb)، `expires_at`، `dispatch_attempts`، `next_attempt_at`، `last_error`، `pending_provider_cancel`، `closed_by/at`. طلب حي واحد لكل إصدار (فهرس جزئي)؛ والإبطال والإلغاء يتطلبان سببًا ووقتًا.
+
+#### sig.signers
+`id`، `request_id`، `user_id` (الموقّع المطلوب)، `signer_role` ∈ `secretary`, `member`, `chair`، `step_order`، `position`، `allow_delegation`، `status` ∈ `waiting`, `pending`, `signed`, `declined`, `cancelled`، `acted_by_user_id` (المنفذ الفعلي)، `delegation_id`، `signed_at`، `decline_reason`، `signed_document_sha256` (المراجعة التي وقّعها)، `evidence` (jsonb: إعادة التحقق، وبصمة النسخة، وبيانات الشهادة)، `provider_signer_ref`.
+
+#### sig.events (إلحاقي)
+`id`، `request_id`، `signer_id`، `kind`، `source` ∈ `system`, `user`, `provider`, `worker`, `admin`، `actor_user_id`، `data` (jsonb منقّى من الأسرار)، `created_at`.
+
+#### sig.provider_callbacks
+`id`، `provider`، `provider_event_id`، `provider_ref`، `request_id`، `signature_valid`، `payload_sha256`، `payload` (بعد حذف الحقول السرية)، `outcome` ∈ `applied`, `duplicate`, `rejected_signature`, `rejected_mismatch`, `rejected_unknown`, `deferred_disabled`, `deferred_on_hold`, `ignored`، `detail`، `received_at`، `applied_at`؛ فريد (`provider`, `provider_event_id`) للرسائل صحيحة التوقيع.
+
+#### sig.reauth_grants
+`id`، `user_id`، `token_hash` فريد (يُخزن مُجزّأً)، `method` ∈ `password`, `sso`، `expires_at` (5 دقائق)، `used_at`، `used_for` — استخدام واحد.
+
+#### sig.mock_keys / sig.mock_envelopes (للمزوّد التجريبي فقط)
+مفاتيح سلطة الشهادات التجريبية وشهادات الموقّعين (base64)، وأظرف المزوّد التجريبي بحالتها وموقّعيها وتسلسل أحداثها. لا تُستخدم مع أي مزوّد حقيقي.
+
+**تعديلات على جداول قائمة:**
+- `minutes.minutes_signoffs`: طرق جديدة `in_app_approval`, `provider_esign`, `pdf_digital_signature`, `wet_signature`، وأعمدة `signature_request_id`، `signature_signer_id`، `on_behalf_of_user_id`.
+- `minutes.minutes_approvals`: الطرق الثلاث الجديدة.
+- `docs.document_links`: الغرض `signature_document` (نسخ التوقيع والنسخ الموقعة).
+- `config.feature_flags`: قيم القائمتين `E_SIGNATURE_PROVIDER` و`E_SIGNATURE_METHOD` (07 §0)، وقيد عام يلزم القيمة بالقائمة المسموحة.
 
 ## 4. عروض التقارير (RPT)
 

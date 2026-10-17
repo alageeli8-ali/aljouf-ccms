@@ -8,6 +8,7 @@ import { get, newRequestKey, post, postOnce } from '../../api/client';
 import type { MinutesComment, MinutesDetail, MinutesSnapshot, MinutesVersion } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { ErrorAlert, StatusTag, errorText } from '../../components/common';
+import { ESignPanel } from '../esign/ESign';
 import { useReasonPrompt } from '../../components/governance';
 import { formatDateTime } from '../../lib/format';
 
@@ -74,12 +75,14 @@ export function CommentsPanel({ detail, onChange }: { detail: MinutesDetail; onC
   );
 }
 
-export function SignaturesPanel({ detail }: { detail: MinutesDetail }) {
+export function SignaturesPanel({ detail, onChange }: { detail: MinutesDetail; onChange?: () => void }) {
   const { t, i18n } = useTranslation();
   const { me } = useAuth();
   const dt = (v?: string | null) => formatDateTime(v, i18n.language, me?.user.calendar);
   return (
     <>
+      <Typography.Title level={5}>{t('esign.panelTitle')}</Typography.Title>
+      <div style={{ marginBottom: 20 }}><ESignPanel minutesId={detail.minutes.id} onChanged={onChange} /></div>
       <Typography.Title level={5}>{t('minutes.signoffs')}</Typography.Title>
       <Table size="small" rowKey="id" pagination={false} dataSource={detail.signoffs} locale={{ emptyText: t('minutes.noSignoffs') }}
         rowClassName={(s) => (s.status === 'invalidated' ? 'ended-row' : '')}
