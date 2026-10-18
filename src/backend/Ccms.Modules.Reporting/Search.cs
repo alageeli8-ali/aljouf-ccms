@@ -79,6 +79,11 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
             ["from"] = q.From?.ToDateTime(TimeOnly.MinValue), ["to"] = q.To?.ToDateTime(TimeOnly.MaxValue), ["limit"] = limit * 2,
         };
         for (var i = 0; i < tokens.Length; i++) args[$"t{i}"] = "%" + tokens[i].Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+        // شرط الترشيح داخل الاستعلام نفسه (OR بين LIKE) ليستخدم المخطط فهارس pg_trgm على التعبيرات المطبعة (V014)؛ والترتيب بالنقاط بعده
+        string Match(string title, string? body = null) => tokens.Length == 0 ? "true" :
+            "(" + string.Join(" OR ", Enumerable.Range(0, tokens.Length).SelectMany(i => body is null
+                ? new[] { $"public.ar_norm({title}) LIKE @t{i}" }
+                : new[] { $"public.ar_norm({title}) LIKE @t{i}", $"public.ar_norm({body}) LIKE @t{i}" })) + ")";
         string Score(string title, string body) => tokens.Length == 0 ? "1" :
             string.Join(" + ", Enumerable.Range(0, tokens.Length).Select(i =>
                 $"(CASE WHEN public.ar_norm({title}) LIKE @t{i} THEN 2 ELSE 0 END + CASE WHEN public.ar_norm({body}) LIKE @t{i} THEN 1 ELSE 0 END)"));
@@ -96,20 +101,28 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
             await Filter(Permissions.ResolutionView, "r");
             var score = Score("r.title_ar || ' ' || coalesce(r.number, '')", "r.text_ar");
             hits.AddRange(await db.QueryAsync($"""
-                SELECT * FROM (
-                  SELECT r.id, r.title_ar, r.number, r.body_id, b.name_ar, r.status, COALESCE(r.issued_at, r.created_at) AS at, r.text_ar, r.classification,
-                         ({score}) AS score,
-                         EXISTS (SELECT 1 FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
-                                 WHERE t.resolution_id = r.id AND ws.category IN ('open','active','waiting','review') AND t.due_date < {Today}) AS late,
-                         (SELECT min(t.due_date) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
-                                 WHERE t.resolution_id = r.id AND ws.category IN ('open','active','waiting','review')) AS next_due
-                  FROM resolutions.resolutions r JOIN bodies.bodies b ON b.id = r.body_id
-                  WHERE (@rAll::boolean OR r.body_id = ANY(@rIds::uuid[])) AND r.status NOT IN ('withdrawn')
-                    AND (@body::uuid IS NULL OR r.body_id = @body)
-                    AND (@status::text IS NULL OR r.status = @status OR (@status = 'open' AND r.status IN ('issued','in_execution','referred')))
-                    AND (@from::timestamptz IS NULL OR COALESCE(r.issued_at, r.created_at) >= @from) AND (@to::timestamptz IS NULL OR COALESCE(r.issued_at, r.created_at) <= @to)
-                ) x WHERE score > 0 AND (NOT @overdue::boolean OR (late AND status IN ('issued','in_execution')))
-                ORDER BY score DESC, at DESC LIMIT @limit
+                SELECT y.*,
+                       EXISTS (SELECT 1 FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
+                               WHERE t.resolution_id = y.id AND ws.category IN ('open','active','waiting','review') AND t.due_date < {Today}) AS late,
+                       (SELECT min(t.due_date) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
+                               WHERE t.resolution_id = y.id AND ws.category IN ('open','active','waiting','review')) AS next_due
+                FROM (
+                  SELECT * FROM (
+                    SELECT r.id, r.title_ar, r.number, r.body_id, b.name_ar, r.status, COALESCE(r.issued_at, r.created_at) AS at, r.text_ar, r.classification,
+                           ({score}) AS score
+                    FROM resolutions.resolutions r JOIN bodies.bodies b ON b.id = r.body_id
+                    WHERE (@rAll::boolean OR r.body_id = ANY(@rIds::uuid[])) AND r.status NOT IN ('withdrawn')
+                      AND {Match("r.title_ar || ' ' || coalesce(r.number, '')", "r.text_ar")}
+                      AND (@body::uuid IS NULL OR r.body_id = @body)
+                      AND (@status::text IS NULL OR r.status = @status OR (@status = 'open' AND r.status IN ('issued','in_execution','referred')))
+                      AND (@from::timestamptz IS NULL OR COALESCE(r.issued_at, r.created_at) >= @from) AND (@to::timestamptz IS NULL OR COALESCE(r.issued_at, r.created_at) <= @to)
+                  ) x
+                  WHERE score > 0
+                    -- «المتأخر» يُرشح قبل الاقتطاع حين يُطلب، وإلا تُحسب حالة التأخر وأقرب استحقاق لأفضل النتائج فقط (24 §6)
+                    AND (NOT @overdue::boolean OR (status IN ('issued','in_execution') AND EXISTS (SELECT 1 FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
+                         WHERE t.resolution_id = x.id AND ws.category IN ('open','active','waiting','review') AND t.due_date < {Today})))
+                  ORDER BY score DESC, at DESC LIMIT @limit
+                ) y ORDER BY score DESC, at DESC
                 """, args, r => new SearchHit(SearchTypes.Resolution, r.GetGuid(0), r.GetString(1), r.Str("number"), r.GetGuid(3), r.GetString(4), r.GetString(5),
                 r.GetDateTime(6), ArabicText.Snippet(r.GetString(7), tokens), r.GetString(8), $"/resolutions/{r.GetGuid(0)}", r.GetInt32(9), r.Date("next_due")), ct));
         }
@@ -125,6 +138,7 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
                   FROM tasks.tasks t JOIN bodies.bodies b ON b.id = t.body_id JOIN tasks.workflow_statuses ws ON ws.code = t.status
                   WHERE (@tAll::boolean OR t.body_id = ANY(@tIds::uuid[])
                          OR t.assignee_user_id = @me OR t.executor_user_id = @me OR t.accountable_user_id = @me OR t.verifier_user_id = @me)
+                    AND {Match("t.title_ar || ' ' || coalesce(t.reference_no, '')", "coalesce(t.description, '') || ' ' || coalesce(t.acceptance_criteria, '')")}
                     AND (@body::uuid IS NULL OR t.body_id = @body)
                     AND (@status::text IS NULL OR t.status = @status OR (@status = 'open' AND ws.category IN ('open','active','waiting','review')))
                     AND (@from::timestamptz IS NULL OR t.created_at >= @from) AND (@to::timestamptz IS NULL OR t.created_at <= @to)
@@ -167,6 +181,7 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
                   SELECT m.id, m.title_ar, m.reference_no, m.body_id, b.name_ar, m.status, m.starts_at, coalesce(m.location, '') AS loc, m.classification, ({score}) AS score
                   FROM meetings.meetings m JOIN bodies.bodies b ON b.id = m.body_id
                   WHERE (@mAll::boolean OR m.body_id = ANY(@mIds::uuid[])) AND (@body::uuid IS NULL OR m.body_id = @body)
+                    AND {Match("m.title_ar || ' ' || coalesce(m.reference_no, '')", "coalesce(m.location, '')")}
                     AND (@status::text IS NULL OR m.status = @status OR @status = 'open')
                     AND (@from::timestamptz IS NULL OR m.starts_at >= @from) AND (@to::timestamptz IS NULL OR m.starts_at <= @to)
                 ) x WHERE score > 0 ORDER BY score DESC, starts_at DESC LIMIT @limit
@@ -211,7 +226,8 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
             // المرفق يُرى بصلاحية سجله المالك: مستندات المهام بصلاحية المهام (أو العلاقة الشخصية الداخلية، أو المشاركة الصريحة مع الجهة)، وغيرها بصلاحية المستندات
             await Filter(Permissions.DocumentView, "d");
             await Filter(Permissions.TaskView, "dt");
-            var score = Score("d.file_name", "x.owner_title || ' ' || coalesce(x.owner_ref, '')");
+            // المرفق يُطابق باسم ملفه (فهرس ثلاثي الأحرف)؛ السجل المالك نفسه يظهر بنتائجه الخاصة
+            var score = Score("d.file_name", "''");
             hits.AddRange(await db.QueryAsync($"""
                 SELECT * FROM (
                   SELECT DISTINCT ON (d.id) d.id, d.file_name, x.owner_ref, x.body_id, b.name_ar, d.lifecycle_status, d.uploaded_at,
@@ -233,7 +249,7 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
                     ) o
                   ) x
                   JOIN bodies.bodies b ON b.id = x.body_id
-                  WHERE d.is_current AND d.lifecycle_status <> 'destroyed' AND d.deleted_at IS NULL
+                  WHERE d.is_current AND d.lifecycle_status <> 'destroyed' AND d.deleted_at IS NULL AND {Match("d.file_name")}
                     AND (l.owner_type = 'task' OR @dAll::boolean OR x.body_id = ANY(@dIds::uuid[]))
                     AND (@body::uuid IS NULL OR x.body_id = @body) AND (@status::text IS NULL OR d.lifecycle_status = @status OR @status = 'open')
                     AND (@from::timestamptz IS NULL OR d.uploaded_at >= @from) AND (@to::timestamptz IS NULL OR d.uploaded_at <= @to)

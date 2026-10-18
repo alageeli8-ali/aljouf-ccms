@@ -48,6 +48,13 @@ public sealed class UnauthenticatedException(string message = "يلزم تسجي
 
 public sealed class AppExceptionHandler(ILogger<AppExceptionHandler> logger, IProblemDetailsService problems) : IExceptionHandler
 {
+    public static string RedactDb(string message)
+    {
+        var i = message.IndexOf("Failing row contains", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) i = message.IndexOf("Key (", StringComparison.Ordinal);
+        return i < 0 ? message : message[..i] + "[قيم الصف محذوفة]";
+    }
+
     public async ValueTask<bool> TryHandleAsync(HttpContext http, Exception exception, CancellationToken ct)
     {
         ProblemDetails pd;
@@ -71,7 +78,11 @@ public sealed class AppExceptionHandler(ILogger<AppExceptionHandler> logger, IPr
                 pd = new ProblemDetails { Status = 400, Title = "البيانات تخالف قيود السجل", Type = "/problems/validation" };
                 break;
             default:
-                logger.LogError(exception, "خطأ غير متوقع في {Path}", http.Request.Path);
+                // أخطاء القاعدة قد تحمل قيم الصف في رسالتها (DETAIL): يُسجل رمز الحالة ورسالة منقحة دون البيانات
+                if (exception is DbException dbe)
+                    logger.LogError("خطأ قاعدة بيانات غير متوقع في {Path}: {SqlState} {Message}", http.Request.Path, dbe.SqlState, RedactDb(dbe.Message));
+                else
+                    logger.LogError(exception, "خطأ غير متوقع في {Path}", http.Request.Path);
                 pd = new ProblemDetails { Status = 500, Title = "حدث خطأ غير متوقع", Type = "/problems/internal" };
                 break;
         }

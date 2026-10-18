@@ -512,7 +512,7 @@ public sealed class Phase7Suite(TestContext ctx) : IAsyncDisposable
         Check.Equal("البند 1 من محضر الاجتماع: موافقة الحضور", j["consent"].S("reference"), "مرجع الموافقة محفوظ");
 
         // ملف صوتي حقيقي: المزوّد التجريبي لا يدّعي تفريغه
-        var real = (await Check.Status(await sec.PostContentAsync(url, Audio([.. Encoding.ASCII.GetBytes("RIFF"), .. new byte[2000]], "audio/wav", true, "إقرار 2")), 200, "تسجيل بلا نص مضمن"))!.G("jobId");
+        var real = (await Check.Status(await sec.PostContentAsync(url, Audio([.. Encoding.ASCII.GetBytes("RIFF\0\0\0\0WAVE"), .. new byte[2000]], "audio/wav", true, "إقرار 2")), 200, "تسجيل بلا نص مضمن"))!.G("jobId");
         await Check.Status(await Admin.PostAsync("/api/v1/ai/maintenance/run"), 200, "معالجة");
         var r = (await sec.GetJsonAsync(url))["jobs"]!.AsArray().First(x => x.G("id") == real)!;
         Check.That(r.S("status") == "failed" && r.S("lastError").Contains("لا يفرّغ صوتًا حقيقيًا"), "فشل صريح لا نص وهمي");

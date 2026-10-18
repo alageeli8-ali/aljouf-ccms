@@ -1,4 +1,32 @@
-# تشغيل على خادم واحد (المرحلة الأولى — 03 §8). الأسرار من ملف .env (انظر deploy/.env.example) ولا تُحفظ في المستودع.
+# تشغيل على خادم واحد (المرحلة الأولى — 03 §8، دليل التشغيل 25 §2).
+# الأسرار من ملف .env بجوار هذا الملف (انسخ deploy/.env.example إلى .env بصلاحية 600) ولا تُحفظ في المستودع.
+# هذا الملف مُعدّ للبيئة التجريبية المؤسسية؛ لم يُشغَّل في بيئة الإنتاج الرسمية (25 §1).
+name: ccms
+
+x-app-env: &app-env
+  ASPNETCORE_ENVIRONMENT: ${CCMS_ENVIRONMENT:-Production}
+  AllowedHosts: ${CCMS_HOSTNAME:?}
+  ConnectionStrings__App: Host=db;Database=ccms;Username=ccms_app;Password=${CCMS_APP_PASSWORD:?}
+  # المفتاح الرئيسي لمخزن الأسرار (32 بايت Base64) — يشفّر أسرار التكاملات المحفوظة في القاعدة
+  Secrets__MasterKey: ${CCMS_SECRETS_MASTER_KEY:?}
+  DataProtection__KeysPath: /var/lib/ccms/keys
+  Storage__Path: /var/lib/ccms/storage
+  # الوكيل الموثوق الوحيد هو nginx بعنوانه الثابت؛ لا تُقبل X-Forwarded-For من غيره
+  Network__TrustedProxies__0: 172.30.10.10
+  Authentication__Entra__TenantId: ${ENTRA_TENANT_ID:-}
+  Authentication__Entra__ClientId: ${ENTRA_CLIENT_ID:-}
+  Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:-}
+  Authentication__LocalLogin__Enabled: ${LOCAL_LOGIN_ENABLED:-false}
+  Authentication__LocalLogin__BreakGlassOnly: "true"
+  Integrations__Email__Provider: ${EMAIL_PROVIDER:-none}
+  Integrations__Email__SmtpHost: ${SMTP_HOST:-}
+  Integrations__Email__SmtpPort: ${SMTP_PORT:-587}
+  Integrations__Email__Username: ${SMTP_USERNAME:-}
+  Integrations__Email__Password: ${SMTP_PASSWORD:-}
+  Integrations__Email__From: ${MAIL_FROM:-}
+  Ai__AllowedHosts__0: ${AI_ALLOWED_HOST:-}
+  OpenApi__Enabled: "false"
+
 services:
   db:
     image: postgres:16
@@ -8,6 +36,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/bootstrap.sql:/bootstrap.sql:ro
+    networks: [backend]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -16,9 +45,10 @@ services:
     image: ccms:${CCMS_VERSION:-latest}
     command: ["migrate"]
     environment:
+      <<: *app-env
       ConnectionStrings__Migrations: Host=db;Database=ccms;Username=ccms_owner;Password=${CCMS_OWNER_PASSWORD:?}
-      ConnectionStrings__App: Host=db;Database=ccms;Username=ccms_app;Password=${CCMS_APP_PASSWORD:?}
       Database__MigrationsPath: /app/migrations
+    networks: [backend]
     depends_on:
       db: { condition: service_healthy }
     restart: "no"
@@ -27,17 +57,13 @@ services:
     image: ccms:${CCMS_VERSION:-latest}
     build: .
     restart: unless-stopped
-    environment:
-      ConnectionStrings__App: Host=db;Database=ccms;Username=ccms_app;Password=${CCMS_APP_PASSWORD:?}
-      Authentication__Entra__TenantId: ${ENTRA_TENANT_ID:-}
-      Authentication__Entra__ClientId: ${ENTRA_CLIENT_ID:-}
-      Authentication__Entra__ClientSecret: ${ENTRA_CLIENT_SECRET:-}
-      Integrations__Email__Provider: ${EMAIL_PROVIDER:-none}
-      Integrations__Email__SmtpHost: ${SMTP_HOST:-}
-      Integrations__Email__From: ${MAIL_FROM:-}
+    environment: *app-env
     volumes:
       - storage:/var/lib/ccms/storage
       - keys:/var/lib/ccms/keys
+    networks:
+      backend: {}
+      edge: { ipv4_address: 172.30.10.20 }
     depends_on:
       migrate: { condition: service_completed_successfully }
 
@@ -48,7 +74,44 @@ services:
     volumes:
       - ./deploy/nginx/ccms.conf:/etc/nginx/conf.d/default.conf:ro
       - ./deploy/certs:/etc/nginx/certs:ro
+    networks:
+      edge: { ipv4_address: 172.30.10.10 }
     depends_on: [app]
+
+  # النسخ الاحتياطي (25 §3): لا يعمل تلقائيًا؛ يشغّله مؤقّت systemd على المضيف (deploy/backup/ccms-backup.timer):
+  #   docker compose --profile ops run --rm backup
+  backup:
+    profiles: [ops]
+    build: ./deploy/backup
+    environment:
+      PGHOST: db
+      PGDATABASE: ccms
+      PGUSER: ccms_owner
+      PGPASSWORD: ${CCMS_OWNER_PASSWORD:?}
+      CCMS_STORAGE: /var/lib/ccms/storage
+      CCMS_KEYS: /var/lib/ccms/keys
+      BACKUP_DIR: /backups
+      BACKUP_PASSPHRASE_FILE: /run/secrets/backup_passphrase
+    volumes:
+      - storage:/var/lib/ccms/storage:ro
+      - keys:/var/lib/ccms/keys:ro
+      - ${BACKUP_HOST_DIR:-/var/backups/ccms}:/backups
+    secrets: [backup_passphrase]
+    networks: [backend]
+    depends_on:
+      db: { condition: service_healthy }
+
+secrets:
+  backup_passphrase:
+    file: ${BACKUP_PASSPHRASE_FILE:-/etc/ccms/backup.pass}
+
+networks:
+  backend:
+    internal: true
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
 
 volumes:
   pgdata: {}

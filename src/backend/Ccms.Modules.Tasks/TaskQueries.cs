@@ -13,9 +13,16 @@ internal static class TaskQueries
         SELECT t.*, b.name_ar AS body_name, b.code AS body_code, ws.category, ws.name_ar AS status_name_ar, ws.name_en AS status_name_en, ws.color AS status_color,
                r.number AS resolution_number, r.title_ar AS resolution_title, r.resolution_type, r.status AS resolution_status,
                m.reference_no AS meeting_reference, ai.title_ar AS agenda_item_title, ai.position AS agenda_item_position,
-               ua.display_name_ar AS assignee_user_name, o.name_ar AS assignee_org_unit_name, e.name_ar AS assignee_entity_name,
-               ue.display_name_ar AS executor_name, om.display_name_ar AS unit_manager_name, xo.name_ar AS executing_unit_name,
-               uc.display_name_ar AS accountable_name, uv.display_name_ar AS verifier_name, uvb.display_name_ar AS verified_by_name,
+               -- أسماء العرض باستعلامات فرعية لا بربط: 15 ربطًا كانت تكلف المخطط ~150 مث لكل طلب (24 §6)
+               (SELECT x.display_name_ar FROM iam.users x WHERE x.id = t.assignee_user_id) AS assignee_user_name,
+               (SELECT x.name_ar FROM org.org_units x WHERE x.id = t.assignee_org_unit_id) AS assignee_org_unit_name,
+               (SELECT x.name_ar FROM org.external_entities x WHERE x.id = t.assignee_external_entity_id) AS assignee_entity_name,
+               (SELECT x.display_name_ar FROM iam.users x WHERE x.id = t.executor_user_id) AS executor_name,
+               (SELECT x.display_name_ar FROM org.org_units o JOIN iam.users x ON x.id = o.manager_user_id WHERE o.id = t.assignee_org_unit_id) AS unit_manager_name,
+               (SELECT x.name_ar FROM org.org_units x WHERE x.id = t.executing_org_unit_id) AS executing_unit_name,
+               (SELECT x.display_name_ar FROM iam.users x WHERE x.id = t.accountable_user_id) AS accountable_name,
+               (SELECT x.display_name_ar FROM iam.users x WHERE x.id = t.verifier_user_id) AS verifier_name,
+               (SELECT x.display_name_ar FROM iam.users x WHERE x.id = t.verified_by) AS verified_by_name,
                (ws.category IN ('open','active') AND t.due_date < (now() AT TIME ZONE 'Asia/Riyadh')::date) AS is_overdue,
                CASE WHEN ws.category IN ('open','active') AND t.due_date < (now() AT TIME ZONE 'Asia/Riyadh')::date
                     THEN (now() AT TIME ZONE 'Asia/Riyadh')::date - t.due_date END AS days_overdue,
@@ -28,15 +35,6 @@ internal static class TaskQueries
         LEFT JOIN resolutions.resolutions r ON r.id = t.resolution_id
         LEFT JOIN meetings.meetings m ON m.id = t.meeting_id
         LEFT JOIN meetings.agenda_items ai ON ai.id = t.agenda_item_id
-        LEFT JOIN iam.users ua ON ua.id = t.assignee_user_id
-        LEFT JOIN org.org_units o ON o.id = t.assignee_org_unit_id
-        LEFT JOIN iam.users om ON om.id = o.manager_user_id
-        LEFT JOIN org.external_entities e ON e.id = t.assignee_external_entity_id
-        LEFT JOIN iam.users ue ON ue.id = t.executor_user_id
-        LEFT JOIN org.org_units xo ON xo.id = t.executing_org_unit_id
-        LEFT JOIN iam.users uc ON uc.id = t.accountable_user_id
-        LEFT JOIN iam.users uv ON uv.id = t.verifier_user_id
-        LEFT JOIN iam.users uvb ON uvb.id = t.verified_by
         """;
 
     internal static object Map(System.Data.Common.DbDataReader r) => new

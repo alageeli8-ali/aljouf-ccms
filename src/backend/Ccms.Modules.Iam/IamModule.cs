@@ -37,7 +37,9 @@ public sealed class IamModule : IModule
                 o.Cookie.Name = "ccms.session";
                 o.Cookie.HttpOnly = true;
                 o.Cookie.SameSite = SameSiteMode.Strict;
-                o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                // HTTPS فقط خارج التطوير والاختبار؛ الكعكة لا تُرسل أبدًا عبر اتصال غير مشفر في الإنتاج
+                o.Cookie.SecurePolicy = configuration["ASPNETCORE_ENVIRONMENT"] is "Development" or "Testing" || Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") is "Development" or "Testing"
+                    ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
                 o.SlidingExpiration = true;
                 o.ExpireTimeSpan = TimeSpan.FromHours(10);
                 o.EventsType = typeof(SessionValidationEvents);
@@ -97,10 +99,13 @@ public sealed class IamModule : IModule
         return Results.Ok(new { userId = id, displayName = name });
     }
 
-    internal static async Task<IResult> ChangePassword(ChangePasswordRequest req, ICurrentUser user, LocalLoginService local, IAccessService access, CancellationToken ct)
+    internal static async Task<IResult> ChangePassword(ChangePasswordRequest req, ICurrentUser user, LocalLoginService local, IAccessService access, Db db, CancellationToken ct)
     {
         if (!user.IsAuthenticated) throw new UnauthenticatedException();
         await local.ChangeAsync(user.UserId, req, ct);
+        // تغيير كلمة المرور يُبطل الجلسات الأخرى (قد تكون مسروقة) ويُبقي الجلسة الحالية
+        await db.ExecuteAsync("UPDATE iam.sessions SET revoked_at = now(), revoked_reason = 'password_changed' WHERE user_id = @u AND revoked_at IS NULL AND id <> @sid",
+            new { u = user.UserId, sid = user.SessionId ?? Guid.Empty }, ct);
         access.Invalidate(user.UserId);
         return Results.NoContent();
     }
@@ -337,6 +342,8 @@ public sealed class IamModule : IModule
                 ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, failed_attempts = 0, locked_until = NULL,
                   password_set_at = now(), must_change = true
                 """, new { id, hash = LocalLoginService.Hash(req.Password) }, ct);
+            // تعيين كلمة مرور من المسؤول يُنهي كل جلسات المستخدم
+            await tx.ExecuteAsync("UPDATE iam.sessions SET revoked_at = now(), revoked_reason = 'password_reset' WHERE user_id = @id AND revoked_at IS NULL", new { id }, ct);
             await audit.WriteAsync(tx, new AuditEntry("IAM", "user.password_set", "user", id.ToString()), ct);
         }, ct);
         return Results.NoContent();

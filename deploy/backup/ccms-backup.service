@@ -1,0 +1,12 @@
+# وحدة systemd على المضيف لتشغيل النسخة الاحتياطية عبر Docker Compose (25 §3)
+[Unit]
+Description=CCMS encrypted backup (database + documents + keys)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ccms
+ExecStart=/usr/bin/docker compose --profile ops run --rm backup
+# بعد النجاح: نسخ إلى موقع خارج الخادم (يحدده المكتب — Q-24)، مثل:
+# ExecStartPost=/usr/bin/rsync -a /var/backups/ccms/ backup-host:/srv/ccms/

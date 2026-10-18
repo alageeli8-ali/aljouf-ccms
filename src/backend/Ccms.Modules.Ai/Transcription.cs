@@ -57,6 +57,11 @@ internal static class Transcription
         await svc.DemandQuotaAsync(AiFunctions.Transcription, s, "meeting", id, ct);
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms, ct);
+        // المحتوى يطابق توقيع ملف صوتي بامتداده (لا يُقبل ملف آخر بنوع محتوى مزوّر)
+        if (Path.GetExtension(file.FileName).ToLowerInvariant() is not (".wav" or ".mp3" or ".m4a")
+            || !FileSafety.MatchesSignature(file.FileName, ms.GetBuffer().AsSpan(0, (int)Math.Min(16, ms.Length))))
+            throw AppValidationException.For("file", "الملف ليس تسجيلًا صوتيًا صالحًا (wav أو mp3 أو m4a)");
+        type = FileSafety.ContentTypeFor(file.FileName);
         var jobId = Guid.CreateVersion7();
         var consent = new JsonObject
         {
@@ -65,7 +70,7 @@ internal static class Transcription
         };
         await db.InTransactionAsync(async tx =>
         {
-            var doc = await docs.SaveAsync(tx, Path.GetFileName(file.FileName), type, ms.ToArray(), "meeting", id, "ai_recording", cls, me.UserId, ct);
+            var doc = await docs.SaveAsync(tx, FileSafety.SafeName(file.FileName), type, ms.ToArray(), "meeting", id, "ai_recording", cls, me.UserId, ct);
             await tx.ExecuteAsync("""
                 INSERT INTO ai.jobs (id, kind, meeting_id, body_id, document_id, status, consent, requested_by) VALUES (@jobId, 'transcription', @id, @body, @doc, 'queued', @consent::jsonb, @me)
                 """, new { jobId, id, body = m.Body, doc = doc.Id, consent = consent.ToJsonString(), me = me.UserId }, ct);

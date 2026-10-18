@@ -24,7 +24,7 @@ public sealed class ReportingModule : IModule
         g.MapGet("/executive", Kpis.ExecutiveEndpoint);
         g.MapGet("/kpi-definitions", () => Results.Ok(KpiCatalog.All));
         g.MapGet("/catalog", Reports.CatalogEndpoint);
-        g.MapGet("/run/{code}", Reports.RunEndpoint);
+        g.MapGet("/run/{code}", Reports.RunEndpoint).RequireRateLimiting("export");
         g.MapGet("/tasks-by-body", TasksByBody);
         g.MapGet("/meetings-by-month", MeetingsByMonth);
         g.MapGet("/resolutions-by-status", ResolutionsByStatus);

@@ -1,11 +1,11 @@
-import { Avatar, Badge, Button, Dropdown, Layout, Menu, Space, Tag, Typography } from 'antd';
+import { Avatar, Badge, Button, Drawer, Dropdown, Grid, Layout, Menu, Space, Tag, Typography } from 'antd';
 import {
   AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, CheckSquareOutlined, FileTextOutlined,
   GlobalOutlined, IdcardOutlined, LogoutOutlined, SettingOutlined, TeamOutlined, UserOutlined, SolutionOutlined, ExportOutlined, SafetyCertificateOutlined, BranchesOutlined,
-  RobotOutlined, SearchOutlined, ApiOutlined, InboxOutlined,
+  RobotOutlined, SearchOutlined, ApiOutlined, InboxOutlined, MenuOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { get, localStorageSafe } from '../api/client';
@@ -20,7 +20,14 @@ export default function AppLayout() {
   const nav = useNavigate();
   const loc = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const lang = i18n.language as Lang;
+  // الجوال (< md): قائمة منسدلة جانبية بدل الشريط الثابت؛ اللوحي (< lg): شريط أيقونات مطوي.
+  const bp = Grid.useBreakpoint();
+  const phone = bp.md === false;
+  const compact = bp.lg === false;
+  useEffect(() => { setDrawerOpen(false); }, [loc.pathname]);
+  const rail = !phone && (collapsed || compact);
 
   const unread = useQuery({ queryKey: ['unread'], queryFn: () => get<{ count: number }>('/api/v1/notifications/unread-count'), refetchInterval: 30_000 });
   const info = useQuery({ queryKey: ['system-info'], queryFn: () => get<{ environment: string; version: string }>('/api/v1/system/info'), staleTime: Infinity });
@@ -33,19 +40,19 @@ export default function AppLayout() {
   };
 
   const showReports = can('reports.executive') || can('reports.body') || can('audit.read') || (me?.bodyRoles.length ?? 0) > 0 || hasRole('governance_officer');
-  const portalItems = [{ type: 'group' as const, label: collapsed ? null : t('nav.portal'), children: [
+  const portalItems = [{ type: 'group' as const, label: rail ? null : t('nav.portal'), children: [
     { key: '/portal', icon: <ExportOutlined />, label: <Link to="/portal">{t('portal.myAssignments')}</Link> },
     { key: '/notifications', icon: <BellOutlined />, label: <Link to="/notifications">{t('nav.notifications')}</Link> },
   ] }];
   const internalItems = [
-    { type: 'group' as const, label: collapsed ? null : t('nav.work'), children: [
+    { type: 'group' as const, label: rail ? null : t('nav.work'), children: [
       { key: '/', icon: <AppstoreOutlined />, label: <Link to="/">{t('nav.dashboard')}</Link> },
       { key: '/tasks', icon: <CheckSquareOutlined />, label: <Link to="/tasks">{t('nav.tasks')}</Link> },
       { key: '/notifications', icon: <BellOutlined />, label: <Link to="/notifications">{t('nav.notifications')}</Link> },
       ...(hasRole('external_representative') && feature('EXTERNAL_PORTAL_ENABLED') && !me?.portalUser
         ? [{ key: '/portal', icon: <ExportOutlined />, label: <Link to="/portal">{t('nav.portal')}</Link> }] : []),
     ] },
-    { type: 'group' as const, label: collapsed ? null : t('nav.governance'), children: [
+    { type: 'group' as const, label: rail ? null : t('nav.governance'), children: [
       { key: '/bodies', icon: <TeamOutlined />, label: <Link to="/bodies">{t('nav.bodies')}</Link> },
       { key: '/memberships', icon: <IdcardOutlined />, label: <Link to="/memberships">{t('nav.memberships')}</Link> },
       { key: '/meetings', icon: <CalendarOutlined />, label: <Link to="/meetings">{t('nav.meetings')}</Link> },
@@ -56,7 +63,7 @@ export default function AppLayout() {
       { key: '/signature-verify', icon: <SafetyCertificateOutlined />, label: <Link to="/signature-verify">{t('nav.signatureVerify')}</Link> },
       ...(can('records.manage') || can('records.destruction.approve') ? [{ key: '/records', icon: <InboxOutlined />, label: <Link to="/records">{t('nav.records')}</Link> }] : []),
     ] },
-    ...(can('admin.users.manage') || can('admin.settings.view') || can('esign.routes.manage') || can('ai.logs.view') ? [{ type: 'group' as const, label: collapsed ? null : t('nav.administration'), children: [
+    ...(can('admin.users.manage') || can('admin.settings.view') || can('esign.routes.manage') || can('ai.logs.view') ? [{ type: 'group' as const, label: rail ? null : t('nav.administration'), children: [
       ...(can('admin.users.manage') ? [{ key: '/users', icon: <UserOutlined />, label: <Link to="/users">{t('nav.users')}</Link> }] : []),
       ...(can('admin.settings.view') ? [{ key: '/settings', icon: <SettingOutlined />, label: <Link to="/settings">{t('nav.settings')}</Link> }] : []),
       ...(can('admin.settings.view') ? [{ key: '/integrations', icon: <ApiOutlined />, label: <Link to="/integrations">{t('nav.integrations')}</Link> }] : []),
@@ -69,26 +76,48 @@ export default function AppLayout() {
   const name = lang === 'en' ? me?.user.displayNameEn ?? me?.user.displayNameAr : me?.user.displayNameAr;
   const roles = [...new Set([...(me?.systemRoles ?? []).filter((r) => r !== 'employee'), ...(me?.bodyRoles ?? []).map((b) => b.role)])];
 
+  const brand = (folded: boolean) => (
+    <div style={{ padding: folded ? '18px 8px' : '18px 18px 12px', color: '#fff' }}>
+      <div className="brand-mark" style={{ fontSize: folded ? 14 : 18, lineHeight: 1.3, textAlign: folded ? 'center' : 'start' }}>
+        {folded ? <AuditOutlined /> : t('app.short')}
+      </div>
+      {!folded && <div style={{ color: '#d9c4a8', fontSize: 12, marginTop: 4 }}>{t('app.org')}</div>}
+    </div>
+  );
+  const menu = (folded: boolean) => (
+    <Menu theme="dark" mode="inline" inlineCollapsed={folded} selectedKeys={[selected === '/' ? '/' : selected]} items={items} style={{ borderInlineEnd: 0, marginTop: 8 }} />
+  );
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} width={244} breakpoint="lg" theme="dark">
-        <div style={{ padding: collapsed ? '18px 8px' : '18px 18px 12px', color: '#fff' }}>
-          <div className="brand-mark" style={{ fontSize: collapsed ? 14 : 18, lineHeight: 1.3, textAlign: collapsed ? 'center' : 'start' }}>
-            {collapsed ? <AuditOutlined /> : t('app.short')}
-          </div>
-          {!collapsed && <div style={{ color: '#d9c4a8', fontSize: 12, marginTop: 4 }}>{t('app.org')}</div>}
-        </div>
-        <div className="zigzag" />
-        <Menu theme="dark" mode="inline" selectedKeys={[selected === '/' ? '/' : selected]} items={items} style={{ borderInlineEnd: 0, marginTop: 8 }} />
-      </Sider>
+      {!phone && (
+        <Sider collapsible={!compact} collapsed={rail} onCollapse={setCollapsed} width={244} theme="dark" trigger={compact ? null : undefined}>
+          {brand(rail)}
+          <div className="zigzag" />
+          {menu(rail)}
+        </Sider>
+      )}
+      {phone && (
+        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} placement={lang === 'ar' ? 'right' : 'left'} width={272} closable={false}
+          styles={{ body: { padding: 0, background: '#553D26' } }} rootClassName="nav-drawer">
+          {brand(false)}
+          <div className="zigzag" />
+          {menu(false)}
+        </Drawer>
+      )}
       <Layout>
-        <Header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #dfe3dc' }}>
-          <Space size={12}>
-            <Typography.Text strong style={{ fontSize: 15 }}>{t('app.name')}</Typography.Text>
-            {info.data && info.data.environment !== 'Production' && <Tag color="gold">{t('common.environment')}: <bdi>{info.data.environment}</bdi></Tag>}
-          </Space>
-          <Space size={8}>
-            <Button type="text" icon={<GlobalOutlined />} onClick={switchLang}>{t('common.language')}</Button>
+        <Header className="app-header" style={{ paddingInline: phone ? 12 : undefined }}>
+          <div className="app-header-start">
+            {phone && <Button type="text" icon={<MenuOutlined />} aria-label={t('nav.menu')} onClick={() => setDrawerOpen(true)} />}
+            <Typography.Text strong className="app-header-title">{compact ? t('app.short') : t('app.name')}</Typography.Text>
+            {info.data && info.data.environment !== 'Production' && (
+              <Tag color="gold" style={{ marginInlineEnd: 0 }} title={`${t('common.environment')}: ${info.data.environment}`}>
+                {!phone && <>{t('common.environment')}: </>}<bdi>{info.data.environment}</bdi>
+              </Tag>
+            )}
+          </div>
+          <Space size={phone ? 2 : 8} style={{ flex: 'none' }}>
+            <Button type="text" icon={<GlobalOutlined />} onClick={switchLang} aria-label={t('common.language')}>{phone ? null : t('common.language')}</Button>
             <Badge count={unread.data?.count ?? 0} size="small" offset={[-4, 4]}>
               <Button type="text" icon={<BellOutlined />} aria-label={t('nav.notifications')} onClick={() => nav('/notifications')} />
             </Badge>
@@ -105,12 +134,12 @@ export default function AppLayout() {
             >
               <Space style={{ cursor: 'pointer' }}>
                 <Avatar style={{ background: '#B28655' }} icon={<UserOutlined />} />
-                <span>{name}</span>
+                {!compact && <span className="app-header-user">{name}</span>}
               </Space>
             </Dropdown>
           </Space>
         </Header>
-        <Content style={{ padding: 24, maxWidth: 1440, width: '100%', margin: '0 auto' }}>
+        <Content style={{ padding: phone ? 12 : compact ? 16 : 24, maxWidth: 1440, width: '100%', margin: '0 auto', minWidth: 0 }}>
           <Outlet />
         </Content>
       </Layout>

@@ -186,3 +186,15 @@ sup.ai-ref { margin-inline-start: 2px; cursor: help; }
 .ai-interpretation { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
 .ai-inline-result { margin-top: 8px; padding: 8px; border: 1px dashed #e3d7f3; border-radius: 6px; }
 .ai-mock-faults { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+
+/* ===== الجاهزية: ترويسة متجاوبة وقائمة الجوال ===== */
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #dfe3dc; }
+.app-header-start { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
+.app-header-title { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.app-header-user { max-width: 220px; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.nav-drawer .ant-drawer-content { background: #553D26; }
+.nav-drawer .ant-menu-dark { background: transparent; }
+@media (max-width: 767px) {
+  .page-header h1 { font-size: 19px; }
+  .ant-descriptions-bordered .ant-descriptions-item-label { width: 38%; }
+}

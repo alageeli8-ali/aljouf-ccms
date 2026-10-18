@@ -116,33 +116,44 @@ internal static class Kpis
     public static async Task<Dictionary<string, object?>> ComputeAsync(Db db, Guid[] ids, ReportFilter f, CancellationToken ct)
     {
         var a = ReportScope.Args(ids, f);
+        // مسح واحد لكل جدول بتجميع FILTER بدل استعلام فرعي لكل مؤشر (24 §6)
         var k = await db.QuerySingleAsync($"""
-            SELECT
-             (SELECT count(*) FROM bodies.bodies b WHERE b.id = ANY(@ids) AND b.status = 'active'),
-             (SELECT count(*) FROM meetings.meetings m WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")} AND m.status NOT IN ('draft','cancelled')),
-             (SELECT count(*) FROM meetings.meetings m WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed')),
-             (SELECT count(*) FROM meetings.attendance_records ar JOIN meetings.meetings m ON m.id = ar.meeting_id
-                WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed') AND ar.body_member_id IS NOT NULL AND ar.status IN ('present','proxy')),
-             (SELECT count(*) FROM meetings.attendance_records ar JOIN meetings.meetings m ON m.id = ar.meeting_id
-                WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed') AND ar.body_member_id IS NOT NULL),
-             (SELECT count(*) FROM resolutions.resolutions r WHERE r.body_id = ANY(@ids) AND r.issued_at IS NOT NULL AND {ReportScope.InPeriod("r.issued_at")} AND {ReportScope.ResolutionUnit}),
-             (SELECT count(DISTINCT h.resolution_id) FROM resolutions.resolution_status_history h JOIN resolutions.resolutions r ON r.id = h.resolution_id
-                WHERE r.body_id = ANY(@ids) AND h.to_status = 'executed' AND {ReportScope.InPeriod("h.changed_at")} AND {ReportScope.ResolutionUnit}),
-             (SELECT count(*) FROM resolutions.resolutions r WHERE r.body_id = ANY(@ids) AND r.status IN ('issued','in_execution') AND {ReportScope.ResolutionUnit}
-                AND EXISTS (SELECT 1 FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE t.resolution_id = r.id AND {ReportScope.OpenTask} AND t.due_date < {ReportScope.Day})),
-             (SELECT count(*) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE t.body_id = ANY(@ids) AND {ReportScope.OpenTask} AND {ReportScope.TaskUnit}),
-             (SELECT count(*) FROM tasks.tasks t WHERE t.body_id = ANY(@ids) AND t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")} AND {ReportScope.TaskUnit}),
-             (SELECT count(*) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
-                WHERE t.body_id = ANY(@ids) AND ws.category IN ('open','active') AND t.due_date < {ReportScope.Day} AND {ReportScope.TaskUnit}),
-             (SELECT avg(extract(epoch FROM (t.completed_at - coalesce(t.assigned_at, t.created_at))) / 86400.0)::float8 FROM tasks.tasks t
-                WHERE t.body_id = ANY(@ids) AND t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")} AND {ReportScope.TaskUnit}),
-             (SELECT count(*) FROM tasks.tasks t WHERE t.body_id = ANY(@ids) AND t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")} AND {ReportScope.TaskUnit}
-                AND t.due_date IS NOT NULL AND (t.completed_at AT TIME ZONE 'Asia/Riyadh')::date <= t.due_date),
-             (SELECT count(*) FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id WHERE m.body_id = ANY(@ids) AND mi.status IN ('secretary_review','chair_review','member_review','returned')),
-             (SELECT count(*) FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id WHERE m.body_id = ANY(@ids) AND mi.status = 'pending_signatures'),
-             (SELECT count(*) FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id WHERE m.body_id = ANY(@ids) AND mi.status = 'pending_final_approval'),
-             (SELECT avg(extract(epoch FROM (mi.approved_at - coalesce(m.actual_ended_at, m.starts_at))) / 86400.0)::float8 FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id
-                WHERE m.body_id = ANY(@ids) AND mi.approved_at IS NOT NULL AND {ReportScope.InPeriod("mi.approved_at")})
+            WITH mt AS (
+              SELECT count(*) FILTER (WHERE m.status NOT IN ('draft','cancelled')) AS planned, count(*) FILTER (WHERE m.status IN ('concluded','closed')) AS held
+              FROM meetings.meetings m WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")}
+            ), att AS (
+              SELECT count(*) FILTER (WHERE ar.status IN ('present','proxy')) AS present, count(*) AS expected
+              FROM meetings.attendance_records ar JOIN meetings.meetings m ON m.id = ar.meeting_id
+              WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed') AND ar.body_member_id IS NOT NULL
+            ), rs AS (
+              SELECT count(*) FILTER (WHERE r.issued_at IS NOT NULL AND {ReportScope.InPeriod("r.issued_at")}) AS issued,
+                     count(*) FILTER (WHERE r.status IN ('issued','in_execution') AND EXISTS (SELECT 1 FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
+                                      WHERE t.resolution_id = r.id AND {ReportScope.OpenTask} AND t.due_date < {ReportScope.Day})) AS overdue
+              FROM resolutions.resolutions r WHERE r.body_id = ANY(@ids) AND {ReportScope.ResolutionUnit}
+            ), ex AS (
+              SELECT count(DISTINCT h.resolution_id) AS executed FROM resolutions.resolution_status_history h JOIN resolutions.resolutions r ON r.id = h.resolution_id
+              WHERE r.body_id = ANY(@ids) AND h.to_status = 'executed' AND {ReportScope.InPeriod("h.changed_at")} AND {ReportScope.ResolutionUnit}
+            ), tk AS (
+              SELECT count(*) FILTER (WHERE {ReportScope.OpenTask}) AS open,
+                     count(*) FILTER (WHERE t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")}) AS completed,
+                     count(*) FILTER (WHERE ws.category IN ('open','active') AND t.due_date < {ReportScope.Day}) AS overdue,
+                     avg(extract(epoch FROM (t.completed_at - coalesce(t.assigned_at, t.created_at))) / 86400.0)
+                       FILTER (WHERE t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")})::float8 AS avg_days,
+                     count(*) FILTER (WHERE t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")}
+                                      AND t.due_date IS NOT NULL AND (t.completed_at AT TIME ZONE 'Asia/Riyadh')::date <= t.due_date) AS on_time
+              FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE t.body_id = ANY(@ids) AND {ReportScope.TaskUnit}
+            ), mi AS (
+              SELECT count(*) FILTER (WHERE mi.status IN ('secretary_review','chair_review','member_review','returned')) AS review,
+                     count(*) FILTER (WHERE mi.status = 'pending_signatures') AS signatures,
+                     count(*) FILTER (WHERE mi.status = 'pending_final_approval') AS approval,
+                     avg(extract(epoch FROM (mi.approved_at - coalesce(m.actual_ended_at, m.starts_at))) / 86400.0)
+                       FILTER (WHERE mi.approved_at IS NOT NULL AND {ReportScope.InPeriod("mi.approved_at")})::float8 AS avg_approval
+              FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id WHERE m.body_id = ANY(@ids)
+            )
+            SELECT (SELECT count(*) FROM bodies.bodies b WHERE b.id = ANY(@ids) AND b.status = 'active'),
+                   mt.planned, mt.held, att.present, att.expected, rs.issued, ex.executed, rs.overdue, tk.open, tk.completed, tk.overdue, tk.avg_days, tk.on_time,
+                   mi.review, mi.signatures, mi.approval, mi.avg_approval
+            FROM mt, att, rs, ex, tk, mi
             """, a, r => new
         {
             Bodies = r.GetInt64(0), Planned = r.GetInt64(1), Held = r.GetInt64(2), Present = r.GetInt64(3), Expected = r.GetInt64(4), Issued = r.GetInt64(5),
@@ -165,25 +176,41 @@ internal static class Kpis
     public sealed record BodyRow(Guid BodyId, string Code, string Name, string BodyType, string Status, long MeetingsHeld, double? AttendanceRate, long ResolutionsIssued,
         long ResolutionsOverdue, long TasksCompleted, long TasksOverdue, double? OnTimeRate, double? AvgApprovalDays, long MinutesPending);
 
+    /// <summary>أداء الجهات بتجميع واحد لكل جدول (لا استعلامات فرعية لكل جهة) — يبقى ثابت الزمن تقريبًا مع زيادة عدد الجهات (24 §6).</summary>
     public static async Task<List<BodyRow>> BodiesAsync(Db db, Guid[] ids, ReportFilter f, CancellationToken ct) =>
         await db.QueryAsync($"""
-            SELECT b.id, b.code, b.name_ar, b.body_type, b.status,
-              (SELECT count(*) FROM meetings.meetings m WHERE m.body_id = b.id AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed')),
-              (SELECT count(*) FILTER (WHERE ar.status IN ('present','proxy')) FROM meetings.attendance_records ar JOIN meetings.meetings m ON m.id = ar.meeting_id
-                 WHERE m.body_id = b.id AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed') AND ar.body_member_id IS NOT NULL),
-              (SELECT count(*) FROM meetings.attendance_records ar JOIN meetings.meetings m ON m.id = ar.meeting_id
-                 WHERE m.body_id = b.id AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed') AND ar.body_member_id IS NOT NULL),
-              (SELECT count(*) FROM resolutions.resolutions r WHERE r.body_id = b.id AND r.issued_at IS NOT NULL AND {ReportScope.InPeriod("r.issued_at")} AND {ReportScope.ResolutionUnit}),
-              (SELECT count(*) FROM resolutions.resolutions r WHERE r.body_id = b.id AND r.status IN ('issued','in_execution') AND {ReportScope.ResolutionUnit}
-                 AND EXISTS (SELECT 1 FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE t.resolution_id = r.id AND {ReportScope.OpenTask} AND t.due_date < {ReportScope.Day})),
-              (SELECT count(*) FROM tasks.tasks t WHERE t.body_id = b.id AND t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")} AND {ReportScope.TaskUnit}),
-              (SELECT count(*) FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE t.body_id = b.id AND ws.category IN ('open','active') AND t.due_date < {ReportScope.Day} AND {ReportScope.TaskUnit}),
-              (SELECT count(*) FROM tasks.tasks t WHERE t.body_id = b.id AND t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")} AND {ReportScope.TaskUnit}
-                 AND t.due_date IS NOT NULL AND (t.completed_at AT TIME ZONE 'Asia/Riyadh')::date <= t.due_date),
-              (SELECT avg(extract(epoch FROM (mi.approved_at - coalesce(m.actual_ended_at, m.starts_at))) / 86400.0)::float8 FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id
-                 WHERE m.body_id = b.id AND mi.approved_at IS NOT NULL AND {ReportScope.InPeriod("mi.approved_at")}),
-              (SELECT count(*) FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id WHERE m.body_id = b.id AND mi.status NOT IN ('draft','approved'))
-            FROM bodies.bodies b WHERE b.id = ANY(@ids) AND b.status <> 'archived' AND (@status::text IS NULL OR b.status = @status)
+            WITH mt AS (
+              SELECT m.body_id, count(*) AS held FROM meetings.meetings m
+              WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed') GROUP BY m.body_id
+            ), att AS (
+              SELECT m.body_id, count(*) FILTER (WHERE ar.status IN ('present','proxy')) AS present, count(*) AS expected
+              FROM meetings.attendance_records ar JOIN meetings.meetings m ON m.id = ar.meeting_id
+              WHERE m.body_id = ANY(@ids) AND {ReportScope.InPeriod("m.starts_at")} AND m.status IN ('concluded','closed') AND ar.body_member_id IS NOT NULL GROUP BY m.body_id
+            ), rs AS (
+              SELECT r.body_id,
+                count(*) FILTER (WHERE r.issued_at IS NOT NULL AND {ReportScope.InPeriod("r.issued_at")}) AS issued,
+                count(*) FILTER (WHERE r.status IN ('issued','in_execution') AND EXISTS (SELECT 1 FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status
+                                 WHERE t.resolution_id = r.id AND {ReportScope.OpenTask} AND t.due_date < {ReportScope.Day})) AS overdue
+              FROM resolutions.resolutions r WHERE r.body_id = ANY(@ids) AND {ReportScope.ResolutionUnit} GROUP BY r.body_id
+            ), tk AS (
+              SELECT t.body_id,
+                count(*) FILTER (WHERE t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")}) AS completed,
+                count(*) FILTER (WHERE ws.category IN ('open','active') AND t.due_date < {ReportScope.Day}) AS overdue,
+                count(*) FILTER (WHERE t.status = 'completed' AND t.completed_at IS NOT NULL AND {ReportScope.InPeriod("t.completed_at")}
+                                 AND t.due_date IS NOT NULL AND (t.completed_at AT TIME ZONE 'Asia/Riyadh')::date <= t.due_date) AS on_time
+              FROM tasks.tasks t JOIN tasks.workflow_statuses ws ON ws.code = t.status WHERE t.body_id = ANY(@ids) AND {ReportScope.TaskUnit} GROUP BY t.body_id
+            ), mi AS (
+              SELECT m.body_id,
+                avg(extract(epoch FROM (mi.approved_at - coalesce(m.actual_ended_at, m.starts_at))) / 86400.0)
+                  FILTER (WHERE mi.approved_at IS NOT NULL AND {ReportScope.InPeriod("mi.approved_at")})::float8 AS approval_days,
+                count(*) FILTER (WHERE mi.status NOT IN ('draft','approved')) AS pending
+              FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id WHERE m.body_id = ANY(@ids) GROUP BY m.body_id
+            )
+            SELECT b.id, b.code, b.name_ar, b.body_type, b.status, coalesce(mt.held, 0), coalesce(att.present, 0), coalesce(att.expected, 0), coalesce(rs.issued, 0),
+                   coalesce(rs.overdue, 0), coalesce(tk.completed, 0), coalesce(tk.overdue, 0), coalesce(tk.on_time, 0), mi.approval_days, coalesce(mi.pending, 0)
+            FROM bodies.bodies b LEFT JOIN mt ON mt.body_id = b.id LEFT JOIN att ON att.body_id = b.id LEFT JOIN rs ON rs.body_id = b.id
+              LEFT JOIN tk ON tk.body_id = b.id LEFT JOIN mi ON mi.body_id = b.id
+            WHERE b.id = ANY(@ids) AND b.status <> 'archived' AND (@status::text IS NULL OR b.status = @status)
             ORDER BY b.name_ar
             """, ReportScope.Args(ids, f), r =>
         {

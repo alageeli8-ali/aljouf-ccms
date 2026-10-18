@@ -140,6 +140,9 @@ internal static class Records
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!opt.AllowedExtensions.Contains(ext)) throw AppValidationException.For("file", $"نوع الملف غير مسموح؛ المسموح: {string.Join(" ", opt.AllowedExtensions)}");
         if (file.Length == 0 || file.Length > opt.MaxSizeMb * 1024 * 1024) throw AppValidationException.For("file", $"حجم الملف يجب ألا يتجاوز {opt.MaxSizeMb} م.ب");
+        if (!string.Equals(Path.GetExtension(file.FileName), Path.GetExtension(prev.FileName), StringComparison.OrdinalIgnoreCase))
+            throw AppValidationException.For("file", "الإصدار الجديد يجب أن يكون بنوع الملف نفسه");
+        await DocumentsModule.DemandSignatureAsync(file, ct);
 
         var newId = Guid.CreateVersion7();
         var key = $"{DateTime.UtcNow:yyyy/MM}/{newId:N}";
@@ -165,7 +168,7 @@ internal static class Records
                     VALUES (@newId, @series, @versionNo, @prevId, @name, @type, @size, @sha, @key, @cls, @by, @note, @rc, @ru)
                     """, new
                 {
-                    newId, series = prev.SeriesId, versionNo, prevId = prev.Id, name = Path.GetFileName(file.FileName), type = file.ContentType, size = file.Length, sha, key,
+                    newId, series = prev.SeriesId, versionNo, prevId = prev.Id, name = FileSafety.SafeName(file.FileName), type = FileSafety.ContentTypeFor(file.FileName), size = file.Length, sha, key,
                     cls = prev.Classification, by = me.UserId, note = note.Length == 0 ? null : note, rc = prev.RecordsClass, ru = prev.RetentionUntil,
                 }, ct);
                 foreach (var l in owners)

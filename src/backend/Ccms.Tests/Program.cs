@@ -92,7 +92,10 @@ await using (var smtp = new FakeSmtpServer())
     ctx.AdminClient = p8Admin;
     ctx.App = p8App;
     await using (var p8 = new Phase8Suite(ctx, fake, smtp)) results.AddRange(await Runner.RunAsync(p8));
+    await using (var p9 = new Phase9Suite(ctx)) results.AddRange(await Runner.RunAsync(p9));
 }
+// القبول: بعد إيقاف الخوادم الوهمية، فالبريد مفعّل وخادمه غير متاح فعليًا
+await using (var p10 = new Phase10Suite(ctx)) results.AddRange(await Runner.RunAsync(p10));
 ctx.HistoryCountBeforeRestart = (await ctx.AdminClient!.GetJsonAsync("/api/v1/admin/features/history"))["total"]!.GetValue<long>();
 
 // المرحلة ب: إيقاف ثم تشغيل بإعدادات مختلفة على البيانات نفسها

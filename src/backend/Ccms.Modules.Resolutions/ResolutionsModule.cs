@@ -92,9 +92,15 @@ public sealed class ResolutionsModule : IModule
 
     internal const string Select = """
         SELECT r.*, b.name_ar AS body_name, b.code AS body_code, m.reference_no AS meeting_reference, m.title_ar AS meeting_title, m.starts_at AS meeting_starts_at,
-               ai.title_ar AS agenda_item_title, ai.position AS agenda_item_position, mv.version_no AS minutes_version_no, mi.status AS minutes_status,
-               tb.name_ar AS target_body_name, ou.name_ar AS responsible_org_unit_name, ee.name_ar AS responsible_entity_name,
-               sr.number AS supersedes_number, sr.title_ar AS supersedes_title,
+               ai.title_ar AS agenda_item_title, ai.position AS agenda_item_position,
+               -- القيم المرجعية باستعلامات فرعية تختصر زمن التخطيط (24 §6)
+               (SELECT mv.version_no FROM minutes.minutes_versions mv WHERE mv.id = r.minutes_version_id) AS minutes_version_no,
+               (SELECT mi.status FROM minutes.minutes mi WHERE mi.id = r.minutes_id) AS minutes_status,
+               (SELECT tb.name_ar FROM bodies.bodies tb WHERE tb.id = r.target_body_id) AS target_body_name,
+               (SELECT ou.name_ar FROM org.org_units ou WHERE ou.id = r.responsible_org_unit_id) AS responsible_org_unit_name,
+               (SELECT ee.name_ar FROM org.external_entities ee WHERE ee.id = r.responsible_external_entity_id) AS responsible_entity_name,
+               (SELECT sr.number FROM resolutions.resolutions sr WHERE sr.id = r.supersedes_resolution_id) AS supersedes_number,
+               (SELECT sr.title_ar FROM resolutions.resolutions sr WHERE sr.id = r.supersedes_resolution_id) AS supersedes_title,
                (SELECT count(*) FROM tasks.tasks t WHERE t.resolution_id = r.id AND t.status <> 'cancelled') AS task_count,
                (SELECT count(*) FROM tasks.tasks t WHERE t.resolution_id = r.id AND t.status = 'completed') AS tasks_completed,
                (SELECT mo.result FROM deliberation.motions mo WHERE mo.resolution_id = r.id AND mo.status = 'closed' ORDER BY mo.round DESC LIMIT 1) AS vote_result,
@@ -104,12 +110,6 @@ public sealed class ResolutionsModule : IModule
         JOIN bodies.bodies b ON b.id = r.body_id
         LEFT JOIN meetings.meetings m ON m.id = r.meeting_id
         LEFT JOIN meetings.agenda_items ai ON ai.id = r.agenda_item_id
-        LEFT JOIN minutes.minutes_versions mv ON mv.id = r.minutes_version_id
-        LEFT JOIN minutes.minutes mi ON mi.id = r.minutes_id
-        LEFT JOIN bodies.bodies tb ON tb.id = r.target_body_id
-        LEFT JOIN org.org_units ou ON ou.id = r.responsible_org_unit_id
-        LEFT JOIN org.external_entities ee ON ee.id = r.responsible_external_entity_id
-        LEFT JOIN resolutions.resolutions sr ON sr.id = r.supersedes_resolution_id
         """;
 
     internal static object Map(System.Data.Common.DbDataReader r)

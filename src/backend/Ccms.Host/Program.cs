@@ -24,6 +24,12 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 
+// فحص صحة خفيف لحاوية الإنتاج (HEALTHCHECK) — لا يبني التطبيق ولا يتصل بقاعدة البيانات؛ صورة aspnet لا تحوي wget/curl.
+if (args is ["healthcheck", ..])
+{
+    Environment.Exit(await HealthProbe.RunAsync(args.Length > 1 ? args[1] : "/health/live"));
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 
@@ -56,15 +62,31 @@ builder.Services.AddAntiforgery(o =>
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // حد عام لكل مستخدم (أو عنوان لغير المصادق) يحد من الإغراق وكشط البيانات، وحد أضيق للتصدير الثقيل
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
+        !http.Request.Path.StartsWithSegments("/api") ? RateLimitPartition.GetNoLimiter("static")
+        : RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst("ccms:uid")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimits:ApiPerMinute", 600), Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy("export", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst("ccms:uid")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimits:ExportPerMinute", 30), Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy("login", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue("RateLimits:LoginPerMinute", 10), Window = TimeSpan.FromMinutes(1) }));
 });
+// الترويسات الممررة تُقبل من الوكلاء الموثوقين فقط (Network:TrustedProxies / TrustedNetworks)؛ وإلا يستطيع أي عميل تزوير عنوانه
+// فيتجاوز حد محاولات الدخول ويُفسد عنوان المنفذ في سجل التدقيق (24 §2). الافتراضي: الوكيل على الجهاز نفسه فقط.
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    o.KnownIPNetworks.Clear();
-    o.KnownProxies.Clear();
+    o.ForwardLimit = 1;
+    var proxies = builder.Configuration.GetSection("Network:TrustedProxies").Get<string[]>() ?? [];
+    var networks = builder.Configuration.GetSection("Network:TrustedNetworks").Get<string[]>() ?? [];
+    if (proxies.Length + networks.Length > 0) { o.KnownProxies.Clear(); o.KnownIPNetworks.Clear(); }
+    foreach (var ip in proxies)
+        o.KnownProxies.Add(System.Net.IPAddress.Parse(ip));
+    foreach (var net in networks)
+        o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(net));
 });
 builder.Services.AddHealthChecks();
 // مفاتيح حماية البيانات (الكعكات ورموز CSRF) محفوظة خارج العملية لتبقى الجلسات صالحة بعد إعادة التشغيل وبين النسخ
@@ -102,8 +124,8 @@ app.Use(async (ctx, next) =>
 if (!app.Environment.IsDevelopment()) app.UseHsts();
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health/live").AllowAnonymous();
@@ -196,8 +218,19 @@ internal static class Startup
         if (app.Configuration.GetValue("Database:ApplyMigrationsOnStartup", false)) problems.Add("الترحيلات في الإنتاج تُشغّل بأمر migrate بحساب المالك لا عند الإقلاع");
         var cs = app.Configuration.GetConnectionString("App") ?? "";
         if (cs.Contains("Username=ccms_owner", StringComparison.OrdinalIgnoreCase)) problems.Add("حساب التطبيق في الإنتاج يجب أن يكون ccms_app لا ccms_owner");
+        if (string.IsNullOrWhiteSpace(app.Configuration["DataProtection:KeysPath"])) problems.Add("DataProtection:KeysPath مطلوب في الإنتاج (مفاتيح الكعكات ورموز الحماية خارج العملية ومحمية بصلاحيات الملفات)");
+        if ((app.Configuration["AllowedHosts"] ?? "*") == "*") problems.Add("AllowedHosts يجب أن يحدد اسم النطاق الرسمي لا «*» (منع هجمات ترويسة Host)");
+        if (app.Configuration["Secrets:MasterKey"] is { Length: > 0 } mk && !IsKey32(mk)) problems.Add("Secrets:MasterKey يجب أن يكون 32 بايت بترميز Base64");
+        if (!string.IsNullOrEmpty(app.Configuration["Signatures:MockCallbackSecret"])) problems.Add("Signatures:MockCallbackSecret خاص بالمزوّد التجريبي ولا يُضبط في الإنتاج");
+        var storage = app.Configuration["Storage:Path"] ?? "";
+        if (!Path.IsPathRooted(storage)) problems.Add("Storage:Path يجب أن يكون مسارًا مطلقًا خارج مجلد التطبيق في الإنتاج");
         if (problems.Count > 0)
             throw new InvalidOperationException("إعدادات إنتاج غير آمنة:\n - " + string.Join("\n - ", problems));
+    }
+
+    private static bool IsKey32(string b64)
+    {
+        try { return Convert.FromBase64String(b64).Length == 32; } catch (FormatException) { return false; }
     }
 
     public static async Task MigrateAsync(WebApplication app)
@@ -208,5 +241,31 @@ internal static class Startup
         var dir = app.Configuration["Database:MigrationsPath"] is { Length: > 0 } p ? p : Path.Combine(AppContext.BaseDirectory, "migrations");
         var result = await runner.ApplyAsync(dir);
         app.Logger.LogInformation("الترحيلات: طُبق {Applied}، سابقًا {Existing}", result.Applied.Count, result.AlreadyApplied.Count);
+    }
+}
+
+/// <summary>يطلب نقطة الصحة محليًا بترويسة Host من AllowedHosts (لأن تصفية المضيف ترفض 127.0.0.1 في الإنتاج).</summary>
+internal static class HealthProbe
+{
+    public static async Task<int> RunAsync(string path)
+    {
+        var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://127.0.0.1:8080";
+        var port = new Uri(urls.Split(';')[0].Replace("0.0.0.0", "127.0.0.1").Replace("+", "127.0.0.1").Replace("*", "127.0.0.1")).Port;
+        var host = (Environment.GetEnvironmentVariable("AllowedHosts") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(h => h != "*" && !h.StartsWith("*.", StringComparison.Ordinal));
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}{path}");
+            if (host is not null) req.Headers.Host = host;
+            using var res = await http.SendAsync(req);
+            Console.WriteLine($"{(int)res.StatusCode} {path}");
+            return res.IsSuccessStatusCode ? 0 : 1;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"unhealthy: {e.GetType().Name}");
+            return 1;
+        }
     }
 }

@@ -110,6 +110,7 @@ public sealed class DocumentsModule : IModule
         var ext = System.IO.Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!o.AllowedExtensions.Contains(ext)) throw AppValidationException.For("file", $"نوع الملف غير مسموح؛ المسموح: {string.Join(" ", o.AllowedExtensions)}");
         if (file.Length == 0 || file.Length > o.MaxSizeMb * 1024 * 1024) throw AppValidationException.For("file", $"حجم الملف يجب ألا يتجاوز {o.MaxSizeMb} م.ب");
+        await DemandSignatureAsync(file, ct);
 
         var id = Guid.CreateVersion7();
         var root = System.IO.Path.IsPathRooted(o.Path) ? o.Path : System.IO.Path.Combine(env.ContentRootPath, o.Path);
@@ -137,7 +138,7 @@ public sealed class DocumentsModule : IModule
                 await tx.ExecuteAsync("""
                     INSERT INTO docs.documents (id, file_name, content_type, size_bytes, sha256, storage_key, uploaded_by)
                     VALUES (@id, @name, @type, @size, @sha, @key, @by)
-                    """, new { id, name = System.IO.Path.GetFileName(file.FileName), type = file.ContentType, size = file.Length, sha, key, by = me.UserId }, ct);
+                    """, new { id, name = FileSafety.SafeName(file.FileName), type = FileSafety.ContentTypeFor(file.FileName), size = file.Length, sha, key, by = me.UserId }, ct);
                 await tx.ExecuteAsync("""
                     INSERT INTO docs.document_links (id, document_id, owner_type, owner_id, purpose, external_visible) VALUES (@lid, @id, @ownerType, @ownerId, @purpose, @externalVisible)
                     """, new { lid = Guid.CreateVersion7(), id, ownerType, ownerId, purpose, externalVisible }, ct);
@@ -152,7 +153,7 @@ public sealed class DocumentsModule : IModule
         return Results.Created($"/api/v1/documents/{id}/content", new { id, sha256 = sha, scanStatus = "not_scanned", sharedWithEntity = externalVisible });
     }
 
-    private static async Task<IResult> Download(Guid id, Db db, IAccessService access, IAuditWriter audit, IOptions<StorageOptions> options,
+    private static async Task<IResult> Download(Guid id, HttpContext http, Db db, IAccessService access, IAuditWriter audit, IOptions<StorageOptions> options,
         IWebHostEnvironment env, CancellationToken ct)
     {
         await access.DemandAsync(Permissions.DocumentView, Scope.Document(id), ct);
@@ -163,7 +164,22 @@ public sealed class DocumentsModule : IModule
         if (d.Scan == "infected") throw new ConflictException("file-infected", "الملف محجوب لاكتشاف برمجية ضارة");
         var root = System.IO.Path.IsPathRooted(options.Value.Path) ? options.Value.Path : System.IO.Path.Combine(env.ContentRootPath, options.Value.Path);
         await audit.WriteAsync(new AuditEntry("DOC", "document.downloaded", "document", id.ToString(), Classification: d.Cls), ct);
-        return Results.File(System.IO.Path.Combine(root, d.Key), d.Type, d.Name);
+        // نوع المحتوى من الامتداد لا من القيمة المخزنة (قد تكون من المتصفح في سجلات قديمة)، والاستجابة معزولة: لا تُنفذ نصوصًا ولا تُضمَّن من نطاق آخر
+        var h = http.Response.Headers;
+        h.ContentSecurityPolicy = "sandbox; default-src 'none'";
+        h["Cross-Origin-Resource-Policy"] = "same-origin";
+        h.CacheControl = "private, no-store";
+        return Results.File(System.IO.Path.Combine(root, d.Key), FileSafety.ContentTypeFor(d.Name), d.Name);
+    }
+
+    /// <summary>يرفض الملف إن لم تطابق بداياته توقيع امتداده (مثل HTML أو برنامج باسم .pdf).</summary>
+    internal static async Task DemandSignatureAsync(IFormFile file, CancellationToken ct)
+    {
+        var head = new byte[16];
+        await using var s = file.OpenReadStream();
+        var n = await s.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
+        if (!FileSafety.MatchesSignature(file.FileName, head.AsSpan(0, n)))
+            throw AppValidationException.For("file", "محتوى الملف لا يطابق نوعه المعلن بامتداده");
     }
 }
 

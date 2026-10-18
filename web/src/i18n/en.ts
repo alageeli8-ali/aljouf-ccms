@@ -14,6 +14,7 @@ const en: Dictionary = {
     short: 'Councils & Committees',
   },
   nav: {
+    menu: 'Menu',
     dashboard: 'Dashboard',
     bodies: 'Councils & committees',
     meetings: 'Meetings',

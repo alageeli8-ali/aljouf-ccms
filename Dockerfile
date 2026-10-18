@@ -27,5 +27,5 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     Storage__Path=/var/lib/ccms/storage
 USER ccms
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:8080/health/live || exit 1
+HEALTHCHECK --interval=30s --timeout=6s --start-period=40s --retries=3 CMD ["dotnet", "Ccms.Host.dll", "healthcheck"]
 ENTRYPOINT ["dotnet", "Ccms.Host.dll"]
