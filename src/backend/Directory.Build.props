@@ -6,6 +6,8 @@
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- تنبيهات ثغرات الحزم (NuGet Audit) تبقى ظاهرة في سجل البناء ولا توقفه؛ فحصها ومعالجتها في خط البناء (R-24) -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <InvariantGlobalization>false</InvariantGlobalization>
     <!-- UseNpgsql=true يربط مشغّل Npgsql الرسمي (يتطلب الوصول إلى NuGet). الافتراضي false يستخدم الموصل الداخلي المصغّر للتطوير والاختبار دون اتصال -->
     <UseNpgsql Condition="'$(UseNpgsql)' == ''">false</UseNpgsql>

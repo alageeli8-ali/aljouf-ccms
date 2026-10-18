@@ -197,10 +197,11 @@ internal static class DataSources
 #endif
     }
 
+    // ليست const: الثابت false في بناء الإنتاج يجعل فرع الرفض «شفرة لا يُوصل إليها» (CS0162)، والتحذيرات أخطاء في المشروع
 #if USE_NPGSQL
-    public const bool UsesOfflineShim = false;
+    public static readonly bool UsesOfflineShim = false;
 #else
-    public const bool UsesOfflineShim = true;
+    public static readonly bool UsesOfflineShim = true;
 #endif
 }
 
