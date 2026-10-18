@@ -2,7 +2,7 @@ import { Avatar, Badge, Button, Dropdown, Layout, Menu, Space, Tag, Typography }
 import {
   AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, CheckSquareOutlined, FileTextOutlined,
   GlobalOutlined, IdcardOutlined, LogoutOutlined, SettingOutlined, TeamOutlined, UserOutlined, SolutionOutlined, ExportOutlined, SafetyCertificateOutlined, BranchesOutlined,
-  RobotOutlined, SearchOutlined,
+  RobotOutlined, SearchOutlined, ApiOutlined, InboxOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -32,7 +32,7 @@ export default function AppLayout() {
     applyDirection(next);
   };
 
-  const showReports = can('reports.executive') || (me?.bodyRoles.length ?? 0) > 0 || hasRole('governance_officer');
+  const showReports = can('reports.executive') || can('reports.body') || can('audit.read') || (me?.bodyRoles.length ?? 0) > 0 || hasRole('governance_officer');
   const portalItems = [{ type: 'group' as const, label: collapsed ? null : t('nav.portal'), children: [
     { key: '/portal', icon: <ExportOutlined />, label: <Link to="/portal">{t('portal.myAssignments')}</Link> },
     { key: '/notifications', icon: <BellOutlined />, label: <Link to="/notifications">{t('nav.notifications')}</Link> },
@@ -54,10 +54,12 @@ export default function AppLayout() {
       ...(showReports ? [{ key: '/reports', icon: <BarChartOutlined />, label: <Link to="/reports">{t('nav.reports')}</Link> }] : []),
       { key: '/search', icon: <SearchOutlined />, label: <Link to="/search">{t('nav.search')}</Link> },
       { key: '/signature-verify', icon: <SafetyCertificateOutlined />, label: <Link to="/signature-verify">{t('nav.signatureVerify')}</Link> },
+      ...(can('records.manage') || can('records.destruction.approve') ? [{ key: '/records', icon: <InboxOutlined />, label: <Link to="/records">{t('nav.records')}</Link> }] : []),
     ] },
     ...(can('admin.users.manage') || can('admin.settings.view') || can('esign.routes.manage') || can('ai.logs.view') ? [{ type: 'group' as const, label: collapsed ? null : t('nav.administration'), children: [
       ...(can('admin.users.manage') ? [{ key: '/users', icon: <UserOutlined />, label: <Link to="/users">{t('nav.users')}</Link> }] : []),
       ...(can('admin.settings.view') ? [{ key: '/settings', icon: <SettingOutlined />, label: <Link to="/settings">{t('nav.settings')}</Link> }] : []),
+      ...(can('admin.settings.view') ? [{ key: '/integrations', icon: <ApiOutlined />, label: <Link to="/integrations">{t('nav.integrations')}</Link> }] : []),
       ...(can('admin.settings.view') || can('ai.logs.view') ? [{ key: '/ai-admin', icon: <RobotOutlined />, label: <Link to="/ai-admin">{t('nav.aiAdmin')}</Link> }] : []),
       ...(can('esign.routes.manage') ? [{ key: '/signature-routes', icon: <BranchesOutlined />, label: <Link to="/signature-routes">{t('nav.signatureRoutes')}</Link> }] : []),
     ] }] : []),

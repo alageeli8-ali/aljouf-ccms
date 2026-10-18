@@ -12,7 +12,10 @@ import MeetingDetailPage from './pages/MeetingDetailPage';
 import MeetingsPage from './pages/MeetingsPage';
 import MembershipsPage from './pages/MembershipsPage';
 import { MinutesDetailPage, MinutesListPage, ResolutionDetailPage, ResolutionsPage, TemplatesPage } from './pages/MinutesPages';
-import { NotificationsPage, ReportsPage } from './pages/ReportsAndNotifications';
+import { NotificationsPage } from './pages/ReportsAndNotifications';
+import { ReportsPage } from './pages/reports/Reports';
+import { RecordsPage } from './pages/records/Records';
+import { IntegrationsPage } from './pages/integrations/Integrations';
 import SettingsPage from './pages/SettingsPage';
 import { ChangePasswordPage, LetterPage, PortalHome, PortalTaskPage, TaskDetailPage, TasksPage, WorkflowPage } from './pages/TasksPages';
 import UsersPage from './pages/UsersPage';
@@ -74,6 +77,8 @@ export default function App() {
         <Route path="search" element={<SearchPage />} />
         <Route path="ai-admin" element={<RequireAny permissions={['admin.settings.view', 'ai.logs.view']}><AiAdminPage /></RequireAny>} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="records" element={<RequireAny permissions={['records.manage', 'records.destruction.approve']}><RecordsPage /></RequireAny>} />
+        <Route path="integrations" element={<RequirePermission permission="admin.settings.view"><IntegrationsPage /></RequirePermission>} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="users" element={<RequirePermission permission="admin.users.manage"><UsersPage /></RequirePermission>} />
         <Route path="settings" element={<RequirePermission permission="admin.settings.view"><SettingsPage /></RequirePermission>} />

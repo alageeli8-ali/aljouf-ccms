@@ -39,6 +39,7 @@ public sealed class DocumentsModule : IModule
         g.MapPost("/", Upload).DisableAntiforgery();
         g.MapGet("/{id:guid}/content", Download);
         g.MapPost("/{id:guid}/share", Share).Validate<ShareRequest>();
+        Records.Map(api);
     }
 
     private static readonly string[] OwnerTypes = ["body", "meeting", "agenda_item", "minutes", "resolution", "task"];
@@ -61,15 +62,17 @@ public sealed class DocumentsModule : IModule
         await access.DemandAsync(ViewPermission(ownerType), OwnerScope(ownerType, ownerId), ct);
         var portalOnly = ownerType == "task" && await access.IsPortalOnlyAsync(ownerId, ct);
         return Results.Ok(await db.QueryAsync("""
-            SELECT d.id, d.file_name, d.content_type, d.size_bytes, d.sha256, d.classification, d.scan_status, d.uploaded_at, u.display_name_ar, l.purpose, l.external_visible
+            SELECT d.id, d.file_name, d.content_type, d.size_bytes, d.sha256, d.classification, d.scan_status, d.uploaded_at, u.display_name_ar, l.purpose, l.external_visible,
+                   d.version_no, d.locked, d.lifecycle_status, d.records_class, d.legal_hold
             FROM docs.document_links l JOIN docs.documents d ON d.id = l.document_id JOIN iam.users u ON u.id = d.uploaded_by
-            WHERE l.owner_type = @ownerType AND l.owner_id = @ownerId AND d.deleted_at IS NULL AND (NOT @portalOnly::boolean OR l.external_visible)
+            WHERE l.owner_type = @ownerType AND l.owner_id = @ownerId AND d.deleted_at IS NULL AND d.is_current AND (NOT @portalOnly::boolean OR l.external_visible)
             ORDER BY d.uploaded_at DESC
             """, new { ownerType, ownerId, portalOnly }, r => new
         {
             id = r.GetGuid(0), fileName = r.GetString(1), contentType = r.GetString(2), sizeBytes = r.GetInt64(3), sha256 = r.GetString(4),
             classification = r.GetString(5), scanStatus = r.GetString(6), uploadedAt = r.GetDateTime(7), uploadedBy = r.GetString(8), purpose = r.GetString(9),
-            sharedWithEntity = r.GetBoolean(10),
+            sharedWithEntity = r.GetBoolean(10), versionNo = r.GetInt32(11), locked = r.GetBoolean(12), lifecycleStatus = r.GetString(13),
+            recordsClass = r.Str("records_class"), legalHold = r.GetBoolean(15),
         }, ct));
     }
 
@@ -153,9 +156,10 @@ public sealed class DocumentsModule : IModule
         IWebHostEnvironment env, CancellationToken ct)
     {
         await access.DemandAsync(Permissions.DocumentView, Scope.Document(id), ct);
-        var d = await db.QuerySingleAsync("SELECT file_name, content_type, storage_key, scan_status, classification FROM docs.documents WHERE id = @id AND deleted_at IS NULL",
-            new { id }, r => (Name: r.GetString(0), Type: r.GetString(1), Key: r.GetString(2), Scan: r.GetString(3), Cls: r.GetString(4)), ct);
+        var d = await db.QuerySingleAsync("SELECT file_name, content_type, storage_key, scan_status, classification, lifecycle_status FROM docs.documents WHERE id = @id",
+            new { id }, r => (Name: r.GetString(0), Type: r.GetString(1), Key: r.GetString(2), Scan: r.GetString(3), Cls: r.GetString(4), Life: r.GetString(5)), ct);
         if (d == default) throw new NotFoundException();
+        if (d.Life == "destroyed") throw new ConflictException("document-destroyed", "أُتلف محتوى هذا المستند وفق قواعد الاحتفاظ؛ سجله الوصفي وشهادة إتلافه محفوظان");
         if (d.Scan == "infected") throw new ConflictException("file-infected", "الملف محجوب لاكتشاف برمجية ضارة");
         var root = System.IO.Path.IsPathRooted(options.Value.Path) ? options.Value.Path : System.IO.Path.Combine(env.ContentRootPath, options.Value.Path);
         await audit.WriteAsync(new AuditEntry("DOC", "document.downloaded", "document", id.ToString(), Classification: d.Cls), ct);

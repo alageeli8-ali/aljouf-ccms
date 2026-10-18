@@ -53,6 +53,46 @@ results.AddRange(await Runner.RunAsync(new Phase3Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase4Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase6Suite(ctx)));
 await using (var p7 = new Phase7Suite(ctx)) results.AddRange(await Runner.RunAsync(p7));
+results.AddRange(await Runner.RunAsync(new Phase8BaselineSuite(ctx)));
+
+// المرحلة 8: التطبيق بإعدادات تكامل تشير إلى خوادم وهمية (Graph، والمراسلات، وSMTP) على البيانات نفسها
+await using (var fake = new FakeIntegrationServer())
+await using (var smtp = new FakeSmtpServer())
+{
+    await fake.StartAsync();
+    smtp.Start();
+    var integEnv = new Dictionary<string, string>(baseEnv)
+    {
+        ["Integrations__Graph__TenantId"] = fake.TenantId,
+        ["Integrations__Graph__ClientId"] = fake.ClientId,
+        ["Integrations__Graph__AuthorityHost"] = fake.Root,
+        ["Integrations__Graph__BaseUrl"] = fake.Root + "/v1.0",
+        ["Secrets__Values__GRAPH_CLIENT_SECRET"] = fake.ClientSecret,
+        ["Integrations__VideoMeetings__OrganizerUserId"] = fake.Organizer,
+        ["Integrations__DocumentRepository__DriveId"] = fake.DriveId,
+        ["Integrations__Correspondence__BaseUrl"] = fake.Root + "/corr",
+        ["Integrations__Correspondence__Contract"] = "ccms-letters-v1",
+        ["Secrets__Values__CORRESPONDENCE_API_KEY"] = fake.CorrespondenceKey,
+        ["Integrations__Email__Provider"] = "smtp",
+        ["Integrations__Email__SmtpHost"] = "127.0.0.1",
+        ["Integrations__Email__SmtpPort"] = smtp.Port.ToString(),
+        ["Integrations__Email__UseSsl"] = "false",
+        ["Integrations__Email__From"] = "ccms@test.jsdo.gov.sa",
+        ["Integrations__Policies__directory__TimeoutSeconds"] = "1",
+        ["Integrations__Policies__directory__MaxAttempts"] = "2",
+        ["Integrations__Policies__directory__BaseDelayMs"] = "50",
+        ["Integrations__Policies__video_meetings__BaseDelayMs"] = "50",
+        ["Integrations__Circuit__FailureThreshold"] = "3",
+        ["Integrations__Circuit__OpenSeconds"] = "120",
+    };
+    await ctx.App.StopAsync();
+    var p8App = await AppInstance.StartAsync(hostDll, integEnv);
+    var p8Admin = new ApiClient(p8App.BaseUrl);
+    foreach (System.Net.Cookie c in ctx.AdminClient!.Cookies.GetAllCookies()) p8Admin.Cookies.Add(new Uri(p8App.BaseUrl), new System.Net.Cookie(c.Name, c.Value));
+    ctx.AdminClient = p8Admin;
+    ctx.App = p8App;
+    await using (var p8 = new Phase8Suite(ctx, fake, smtp)) results.AddRange(await Runner.RunAsync(p8));
+}
 ctx.HistoryCountBeforeRestart = (await ctx.AdminClient!.GetJsonAsync("/api/v1/admin/features/history"))["total"]!.GetValue<long>();
 
 // المرحلة ب: إيقاف ثم تشغيل بإعدادات مختلفة على البيانات نفسها
@@ -82,7 +122,7 @@ Console.WriteLine($"\n{passed}/{results.Count} ناجح — {sw.Elapsed.TotalSec
 if (args.Length > 0)
 {
     var md = new StringBuilder();
-    md.AppendLine("# نتائج اختبارات المراحل 1–4 ووحدتي التوقيع الإلكتروني والذكاء الاصطناعي").AppendLine();
+    md.AppendLine("# نتائج اختبارات المراحل 1–4 ووحدات التوقيع الإلكتروني والذكاء الاصطناعي والتقارير والسجلات والتكاملات").AppendLine();
     md.AppendLine($"- التاريخ: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
     md.AppendLine($"- البيئة: PostgreSQL ({server}) — قاعدة جديدة `{dbName}` لكل تشغيل؛ التطبيق يعمل كعملية مستقلة ببيئة Testing");
     md.AppendLine($"- النتيجة: **{passed}/{results.Count} ناجح** خلال {sw.Elapsed.TotalSeconds:0} ثانية").AppendLine();
@@ -118,6 +158,8 @@ namespace Ccms.Tests
             // إعدادات مزوّد الذكاء الاصطناعي (V012)
             "AI_PROVIDER", "AI_PROVIDER_HOSTING", "AI_MAX_CLASSIFICATION", "AI_BASE_URL", "AI_MODEL", "AI_TRANSCRIPTION_MODEL", "AI_TIMEOUT_SECONDS",
             "AI_DAILY_REQUESTS_PER_USER", "AI_MONTHLY_REQUEST_LIMIT", "AI_MONTHLY_TOKEN_LIMIT", "AI_USAGE_ALERT_PERCENT", "AI_RETENTION_DAYS",
+            // تكاملات المرحلة 8 (V013)
+            "DIRECTORY_SYNC_ENABLED", "DOCUMENT_REPOSITORY_ENABLED", "VIDEO_MEETINGS_ENABLED",
         ];
 
         public AppInstance? App { get; set; }

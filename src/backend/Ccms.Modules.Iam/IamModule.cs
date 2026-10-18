@@ -65,6 +65,7 @@ public sealed class IamModule : IModule
         users.MapPut("/{id:guid}/password", SetPassword).Validate<SetPasswordRequest>();
         api.MapGet("/roles", ListRoles).WithTags("Users");
         api.MapGet("/directory", Directory).WithTags("Users");
+        DirectorySync.Map(api);
     }
 
     // ---------------- الدخول ----------------

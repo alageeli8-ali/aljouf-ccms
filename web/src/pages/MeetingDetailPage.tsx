@@ -1,5 +1,6 @@
-import { Alert, App, Badge, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Skeleton, Space, Tabs, Tag } from 'antd';
+import { Alert, App, Badge, Button, Card, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Skeleton, Space, Tabs, Tag, Typography } from 'antd';
 import {
+  VideoCameraOutlined,
   CalendarOutlined, CheckOutlined, CloseOutlined, DownOutlined, EditOutlined, FileAddOutlined, FileTextOutlined, LinkOutlined,
   PlayCircleOutlined, QuestionOutlined, SendOutlined, StopOutlined,
   RobotOutlined,
@@ -148,7 +149,10 @@ export default function MeetingDetailPage() {
       {mine && m.status === 'agenda_published' && <RsvpBar meetingId={id!} me={mine} onDone={refresh} circulation={circulation} />}
       <Card>
         <Tabs activeKey={tab} onChange={(k) => setParams({ tab: k }, { replace: true })} items={[
-          { key: 'overview', label: t('meetings.tabs.overview'), children: <Overview detail={q.data!} lang={i18n.language} calendar={me?.user.calendar} /> },
+          { key: 'overview', label: t('meetings.tabs.overview'), children: <>
+            {feature('VIDEO_MEETINGS_ENABLED') && can('meeting.manage') && m.mode !== 'in_person' && !['closed', 'cancelled', 'concluded', 'quorum_failed'].includes(m.status) && <OnlineMeetingButton meetingId={id!} onDone={refresh} />}
+            <Overview detail={q.data!} lang={i18n.language} calendar={me?.user.calendar} />
+          </> },
           { key: 'agenda', label: <span>{t('meetings.tabs.agenda')} <Badge count={agenda.length} color="#006837" showZero size="small" /></span>,
             children: <AgendaEditor meeting={m} agenda={agenda} permissions={permissions} onChange={refresh} /> },
           { key: 'attendance', label: <span>{t('meetings.tabs.attendance')} {pendingResponses > 0 && <Badge count={pendingResponses} size="small" />}</span>,
@@ -163,6 +167,23 @@ export default function MeetingDetailPage() {
       {quorumBlock && <QuorumBlockedModal meetingId={id!} result={quorumBlock} onClose={() => setQuorumBlock(null)} onOpened={refresh} />}
       {reason.node}
     </>
+  );
+}
+
+/** رابط اجتماع مرئي عبر المنصة المعتمدة (اختياري؛ الرابط اليدوي يبقى متاحًا في تعديل الاجتماع). */
+function OnlineMeetingButton({ meetingId, onDone }: { meetingId: string; onDone: () => void }) {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
+  const run = useMutation({
+    mutationFn: () => post<{ onlineLink: string }>(`/api/v1/meetings/${meetingId}/online-meeting`),
+    onSuccess: () => { message.success(t('meetingsVideo.created')); onDone(); },
+    onError: (e) => message.error(errorText(e, t('common.error'))),
+  });
+  return (
+    <Space style={{ marginBottom: 12 }}>
+      <Button icon={<VideoCameraOutlined />} loading={run.isPending} onClick={() => run.mutate()}>{t('meetingsVideo.create')}</Button>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('meetingsVideo.help')}</Typography.Text>
+    </Space>
   );
 }
 

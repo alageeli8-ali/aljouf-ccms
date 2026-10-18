@@ -33,6 +33,7 @@ public sealed class MeetingsModule : IModule
 
     public void MapEndpoints(IEndpointRouteBuilder api)
     {
+        OnlineMeetings.Map(api);
         var g = api.MapGroup("/meetings").WithTags("Meetings");
         g.MapGet("/", List);
         g.MapGet("/calendar", Calendar);

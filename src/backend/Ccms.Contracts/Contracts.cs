@@ -51,7 +51,8 @@ public static class Permissions
         MeetingAttendance = "meeting.attendance", MeetingInvite = "meeting.invite",
         MinutesComment = "minutes.comment", MinutesReviewSecretary = "minutes.review_secretary", MinutesTemplates = "minutes.templates.manage",
         VoteCast = "vote.cast", VoteManage = "vote.manage", VoteViewIndividual = "vote.view_individual",
-        AiUse = "ai.use", AiLogsView = "ai.logs.view";
+        AiUse = "ai.use", AiLogsView = "ai.logs.view",
+        RecordsManage = "records.manage", RecordsDestructionApprove = "records.destruction.approve", AuditExport = "audit.export";
 }
 
 public enum ScopeType { System, Body, Task, Document, Record }
@@ -150,7 +151,8 @@ public static class FeatureKeys
         AiProvider = "AI_PROVIDER", AiProviderHosting = "AI_PROVIDER_HOSTING", AiMaxClassification = "AI_MAX_CLASSIFICATION",
         AiBaseUrl = "AI_BASE_URL", AiModel = "AI_MODEL", AiTranscriptionModel = "AI_TRANSCRIPTION_MODEL", AiTimeoutSeconds = "AI_TIMEOUT_SECONDS",
         AiDailyRequestsPerUser = "AI_DAILY_REQUESTS_PER_USER", AiMonthlyRequestLimit = "AI_MONTHLY_REQUEST_LIMIT",
-        AiMonthlyTokenLimit = "AI_MONTHLY_TOKEN_LIMIT", AiUsageAlertPercent = "AI_USAGE_ALERT_PERCENT", AiRetentionDays = "AI_RETENTION_DAYS";
+        AiMonthlyTokenLimit = "AI_MONTHLY_TOKEN_LIMIT", AiUsageAlertPercent = "AI_USAGE_ALERT_PERCENT", AiRetentionDays = "AI_RETENTION_DAYS",
+        DirectorySyncEnabled = "DIRECTORY_SYNC_ENABLED", DocumentRepositoryEnabled = "DOCUMENT_REPOSITORY_ENABLED", VideoMeetingsEnabled = "VIDEO_MEETINGS_ENABLED";
 }
 
 public interface IFeatureService
@@ -192,7 +194,17 @@ public interface IConnector
     string NameAr { get; }
     string NameEn { get; }
     Task<ConnectorHealth> CheckAsync(CancellationToken ct = default);
+    /// <summary>وصف الموصل لشاشة التكاملات: المفتاح، والمصادقة، والمتطلبات المضبوطة والناقصة. لا يتضمن أي قيمة سرية.</summary>
+    ConnectorDescriptor Describe() => new(Code, NameAr, NameEn, null, "none", []);
+    /// <summary>للموصلات التي تحتاج قراءة مخزن الأسرار لمعرفة اكتمال المتطلبات.</summary>
+    Task<ConnectorDescriptor> DescribeAsync(CancellationToken ct = default) => Task.FromResult(Describe());
 }
+
+/// <summary>متطلب تهيئة لموصل: الاسم ووصفه وهل هو مضبوط (دون قيمته).</summary>
+public sealed record ConnectorRequirement(string Key, string DescriptionAr, string DescriptionEn, bool Present, bool Secret = false);
+
+public sealed record ConnectorDescriptor(string Code, string NameAr, string NameEn, string? FeatureKey, string AuthType, IReadOnlyList<ConnectorRequirement> Requirements,
+    string? NotesAr = null, string? NotesEn = null, IReadOnlyList<string>? RequiredPermissions = null);
 
 public interface IConnectorStatusStore
 {

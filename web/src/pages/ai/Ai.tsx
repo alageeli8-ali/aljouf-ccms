@@ -1,7 +1,7 @@
 // وحدة الذكاء الاصطناعي (ADR-021): كل مخرج مسودة للمراجعة البشرية بمراجع لسجلات حقيقية، ولا يُطبق إلا بإجراء المستخدم عبر الواجهات الأساسية.
 // الواجهة تخفي الإجراءات غير المتاحة، لكن القرار النهائي في الخادم دائمًا.
 import {
-  Alert, App, Badge, Button, Card, Checkbox, Col, Descriptions, Empty, Form, Input, List, Modal, Progress, Row, Select, Space, Statistic, Table, Tabs, Tag, Tooltip, Typography, Upload,
+  Alert, App, Badge, Button, Card, Checkbox, Col, DatePicker, Descriptions, Empty, Form, Input, List, Modal, Progress, Row, Select, Space, Statistic, Table, Tabs, Tag, Tooltip, Typography, Upload,
 } from 'antd';
 import {
   AudioOutlined, BulbOutlined, CheckOutlined, CloudServerOutlined, CopyOutlined, DeleteOutlined, ExperimentOutlined, FileSearchOutlined, KeyOutlined, LinkOutlined,
@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
+import type { Dayjs } from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { api, get, post, put, type Paged } from '../../api/client';
@@ -656,7 +657,7 @@ export function AiTaskLink({ taskId }: { taskId: string }) {
 
 // ============================ البحث والمساعد ============================
 
-const TYPES = ['resolution', 'task', 'minutes', 'meeting'];
+const TYPES = ['resolution', 'task', 'minutes', 'meeting', 'body', 'member', 'document'];
 
 function HitsTable({ items, showProcessable }: { items: SearchHitView[]; showProcessable?: boolean }) {
   const { t, i18n } = useTranslation();
@@ -698,11 +699,14 @@ export function SearchPage() {
 
 function TraditionalSearch() {
   const { t } = useTranslation();
-  const [query, setQuery] = useState<{ q: string; types?: string[]; bodyId?: string; status?: string; overdue?: boolean } | null>(null);
+  const [query, setQuery] = useState<{ q: string; types?: string[]; bodyId?: string; status?: string; overdue?: boolean; period?: [Dayjs, Dayjs] } | null>(null);
   const [form] = Form.useForm();
   const r = useQuery({
     queryKey: ['search', query], enabled: !!query,
-    queryFn: () => get<{ items: SearchHitView[]; tokens: string[] }>('/api/v1/search', { q: query!.q, types: query!.types?.join(','), bodyId: query!.bodyId, status: query!.status, overdue: query!.overdue }),
+    queryFn: () => get<{ items: SearchHitView[]; tokens: string[] }>('/api/v1/search', {
+      q: query!.q, types: query!.types?.join(','), bodyId: query!.bodyId, status: query!.status, overdue: query!.overdue,
+      from: query!.period?.[0]?.format('YYYY-MM-DD'), to: query!.period?.[1]?.format('YYYY-MM-DD'),
+    }),
   });
   return (
     <Card>
@@ -711,6 +715,7 @@ function TraditionalSearch() {
         <Form.Item name="q" style={{ minWidth: 320 }}><Input prefix={<SearchOutlined />} placeholder={t('assistant.searchPlaceholder')} allowClear /></Form.Item>
         <Form.Item name="types"><Select mode="multiple" allowClear style={{ minWidth: 200 }} placeholder={t('assistant.type')} options={TYPES.map((x) => ({ value: x, label: t(`ai.recordType.${x}`) }))} /></Form.Item>
         <Form.Item name="bodyId"><BodySelect allowClear placeholder={t('assistant.body')} style={{ minWidth: 220 }} /></Form.Item>
+        <Form.Item name="period"><DatePicker.RangePicker allowEmpty={[true, true]} placeholder={[t('assistant.period'), t('assistant.period')]} /></Form.Item>
         <Form.Item name="status"><Select allowClear style={{ minWidth: 130 }} placeholder={t('common.status')} options={[{ value: 'open', label: t('assistant.open') }]} /></Form.Item>
         <Form.Item name="overdue" valuePropName="checked"><Checkbox>{t('assistant.overdueOnly')}</Checkbox></Form.Item>
         <Form.Item><Button type="primary" htmlType="submit" icon={<SearchOutlined />}>{t('assistant.search')}</Button></Form.Item>

@@ -1,6 +1,6 @@
 // مكونات مشتركة لوحدات المرحلة 2: الخط الزمني للنشاط، والمرفقات، ونافذة السبب الإلزامي.
-import { App, Button, Empty, Form, Input, Modal, Select, Space, Table, Tag, Timeline, Typography, Upload } from 'antd';
-import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { App, Button, Drawer, Empty, Form, Input, Modal, Select, Space, Table, Tag, Timeline, Tooltip, Typography, Upload } from 'antd';
+import { CloudUploadOutlined, DownloadOutlined, HistoryOutlined, LockOutlined, UploadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -77,6 +77,7 @@ function ActivityDetails({ json }: { json?: string | null }) {
 /** المرفقات المرتبطة بسجل؛ الرفع والتنزيل يخضعان لصلاحية المالك في الخادم. */
 export function Attachments({ ownerType, ownerId, canUpload, purposes = ['attachment'] }: { ownerType: string; ownerId: string; canUpload: boolean; purposes?: string[] }) {
   const [purpose, setPurpose] = useState(purposes[0]);
+  const [versionsOf, setVersionsOf] = useState<Doc | null>(null);
   const { t, i18n } = useTranslation();
   const { message } = App.useApp();
   const { me } = useAuth();
@@ -113,15 +114,70 @@ export function Attachments({ ownerType, ownerId, canUpload, purposes = ['attach
         rowKey="id" size="small" loading={q.isLoading} dataSource={q.data} pagination={false}
         locale={{ emptyText: t('attachments.none') }}
         columns={[
-          { title: t('attachments.file'), dataIndex: 'fileName' },
+          { title: t('attachments.file'), render: (_, d) => <Space size={4}>
+            {d.locked && <Tooltip title={t('docs.lockedHint')}><LockOutlined style={{ color: '#B28655' }} /></Tooltip>}
+            <span>{d.fileName}</span>
+            {(d.versionNo ?? 1) > 1 && <Tag bordered={false} className="mono">v{d.versionNo}</Tag>}
+          </Space> },
           { title: t('attachments.purpose'), dataIndex: 'purpose', render: (v) => t(`enums.docPurpose.${v}`, { defaultValue: v }) },
           { title: t('attachments.size'), dataIndex: 'sizeBytes', render: (v: number) => `${Math.max(1, Math.round(v / 1024))} KB` },
           { title: t('attachments.by'), dataIndex: 'uploadedBy' },
           { title: t('common.date'), dataIndex: 'uploadedAt', render: (v) => formatDateTime(v, i18n.language, me?.user.calendar) },
-          { title: '', render: (_, d) => <Button size="small" icon={<DownloadOutlined />} href={`/api/v1/documents/${d.id}/content`} target="_blank" /> },
+          { title: '', width: 130, render: (_, d) => <Space size={4}>
+            <Button size="small" icon={<DownloadOutlined />} href={`/api/v1/documents/${d.id}/content`} target="_blank" aria-label={t('common.download', { defaultValue: 'download' })} />
+            <Tooltip title={t('docs.versions')}><Button size="small" icon={<HistoryOutlined />} onClick={() => setVersionsOf(d)} aria-label={t('docs.versions')} /></Tooltip>
+          </Space> },
         ]}
       />
+      <VersionsDrawer doc={versionsOf} canUpload={canUpload} onClose={() => setVersionsOf(null)} onChanged={() => void qc.invalidateQueries({ queryKey: key })} />
     </>
+  );
+}
+
+interface DocVersion { id: string; versionNo: number; fileName: string; sha256: string; isCurrent: boolean; locked: boolean; lifecycleStatus: string; versionNote: string | null; uploadedAt: string; uploadedBy: string; sizeBytes: number }
+
+/** إصدارات المستند: الاستبدال بإصدار جديد يحفظ السابق؛ المقفل (موقّع/معتمد) يتطلب سببًا وصلاحية مسؤول السجلات (الخادم يفرضهما). */
+function VersionsDrawer({ doc, canUpload, onClose, onChanged }: { doc: Doc | null; canUpload: boolean; onClose: () => void; onChanged: () => void }) {
+  const { t, i18n } = useTranslation();
+  const { message } = App.useApp();
+  const { me, can, feature } = useAuth();
+  const qc = useQueryClient();
+  const [note, setNote] = useState('');
+  const key = ['documents', 'versions', doc?.id];
+  const q = useQuery({ queryKey: key, enabled: !!doc, queryFn: () => get<DocVersion[]>(`/api/v1/documents/${doc!.id}/versions`) });
+  const current = q.data?.find((v) => v.isCurrent);
+  const allowed = !!current && current.lifecycleStatus !== 'destroyed' && (current.locked ? can('records.manage') : canUpload);
+  const upload = useMutation({
+    mutationFn: (file: File) => { const fd = new FormData(); fd.set('file', file); fd.set('note', note); return api('POST', `/api/v1/documents/${current!.id}/versions`, fd); },
+    onSuccess: () => { message.success(t('docs.versionSaved')); setNote(''); void qc.invalidateQueries({ queryKey: key }); onChanged(); },
+    onError: (e) => message.error(errorText(e, t('common.error'))),
+  });
+  const deposit = useMutation({
+    mutationFn: () => api('POST', `/api/v1/documents/${current!.id}/repository-export`),
+    onSuccess: () => message.success(t('docs.exported')), onError: (e) => message.error(errorText(e, t('common.error'))),
+  });
+  return (
+    <Drawer open={!!doc} onClose={onClose} width={720} title={`${t('docs.versions')} — ${doc?.fileName ?? ''}`}
+      extra={can('records.manage') && feature('DOCUMENT_REPOSITORY_ENABLED') && current ? <Button icon={<CloudUploadOutlined />} loading={deposit.isPending} onClick={() => deposit.mutate()}>{t('docs.exportRepo')}</Button> : null}>
+      {current?.locked && <Typography.Paragraph type="warning"><LockOutlined /> {t('docs.lockedHint')}</Typography.Paragraph>}
+      {allowed && (
+        <Space.Compact style={{ width: '100%', marginBottom: 12 }}>
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('docs.versionNote')} maxLength={1000} />
+          <Upload showUploadList={false} beforeUpload={(f) => { upload.mutate(f); return false; }}>
+            <Button type="primary" icon={<UploadOutlined />} loading={upload.isPending}>{t('docs.newVersion')}</Button>
+          </Upload>
+        </Space.Compact>
+      )}
+      <ErrorAlert error={q.error} />
+      <Table<DocVersion> rowKey="id" size="small" loading={q.isLoading} dataSource={q.data} pagination={false}
+        columns={[
+          { title: '#', dataIndex: 'versionNo', width: 50, render: (v) => <span className="mono">v{v}</span> },
+          { title: t('attachments.file'), render: (_, v) => <Space direction="vertical" size={0}><span>{v.fileName}</span>{v.versionNote && <span className="item-meta">{v.versionNote}</span>}<span className="mono item-meta" dir="ltr">{v.sha256.slice(0, 16)}…</span></Space> },
+          { title: t('common.status'), render: (_, v) => v.lifecycleStatus === 'destroyed' ? <Tag>{t('docs.destroyed')}</Tag> : v.isCurrent ? <Tag color="green">{t('docs.current')}</Tag> : <Tag>{t('docs.superseded')}</Tag> },
+          { title: t('attachments.by'), render: (_, v) => <Space direction="vertical" size={0}><span>{v.uploadedBy}</span><span className="item-meta">{formatDateTime(v.uploadedAt, i18n.language, me?.user.calendar)}</span></Space> },
+          { title: '', width: 50, render: (_, v) => v.lifecycleStatus === 'destroyed' ? null : <Button size="small" icon={<DownloadOutlined />} href={`/api/v1/documents/${v.id}/content`} target="_blank" /> },
+        ]} />
+    </Drawer>
   );
 }
 

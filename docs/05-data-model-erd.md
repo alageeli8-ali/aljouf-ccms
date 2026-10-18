@@ -935,6 +935,26 @@ erDiagram
 - `docs.document_links`: الغرض `ai_recording` (التسجيلات المرفوعة للتفريغ).
 - دالة `public.ar_norm(text)` لتطبيع النص العربي في البحث التقليدي.
 
+### 3.22 جداول وتعديلات وحدة التقارير والسجلات والتكاملات (المنفذة فعليًا)
+
+الترحيل V013 هو المرجع الملزم (23). وحدة التقارير لا تملك جداول وتقرأ مباشرة بنطاق الصلاحية؛ وأُضيف مخطط `integ` للتكاملات.
+
+#### docs.retention_rules
+`code`، `name_ar/en`، `purposes` (أغراض الربط التي تنطبق عليها)، `retention_years`، `archive_after_years`، `final_action` ∈ `permanent`, `destroy`, `review`، `legal_basis`، `active`، `version` (يرتفع مع كل تعديل)، `updated_by/at`. خمس قواعد افتراضية (23 §3.3).
+
+#### docs.destruction_requests
+`reference_no` (DST-سنة-رقم)، `document_ids` (كل إصدارات السلسلة)، `reason`، `status` ∈ `pending`, `approved`, `rejected`, `executed`، `requested_by/at`، `decided_by/at` (قيد: يختلف عن مقدم الطلب)، `decision_note`، `executed_by/at`، `certificate` (jsonb: الاسم والإصدار والبصمة والحجم والتصنيف والصنف لكل متلف، والمستثنى بالحجز). لا حذف.
+
+#### docs.repository_exports
+إيداعات مستودع الوثائق (إلحاقي): `document_id`، `connector`، `status` ∈ `succeeded`, `failed`، `remote_id`، `remote_url`، `error`، `exported_by/at`.
+
+#### integ.connector_calls
+سجل استدعاءات الموصلات (إلحاقي): `connector`، `operation`، `status` ∈ `succeeded`, `failed`, `retrying`, `timeout`, `skipped_disabled`, `denied`, `circuit_open`, `not_configured`، `attempt`، `duration_ms`، `http_status`، `error` (منقح)، `actor_user_id`، `correlation_id`. **لا حمولة ولا أسرار.**
+
+**تعديلات على جداول قائمة:**
+- `docs.documents`: `series_id` (السلسلة؛ يساوي معرّف الإصدار الأول)، `previous_version_id`، `is_current` (فهرس فريد: إصدار حالي واحد للسلسلة، وفريد (السلسلة، الإصدار))، `superseded_at`، `version_note`، `locked` (موقّع/معتمد)، `records_class`، `lifecycle_status` ∈ `active`, `archived`, `destruction_pending`, `destroyed`، `archived_at`، `retention_until`، `legal_hold` و`legal_hold_reason` (قيد: السبب إلزامي)، `destroyed_at/by`. مشغّل يمنع تعديل حقول المحتوى وفك القفل واستعادة المتلف، والحذف مسحوب من حساب التطبيق؛ ومشغّل بعد ربط المستند يحدد صنفه ومدته ويقفله إن كان غرضه توقيعًا أو اعتمادًا.
+- فهارس للتقارير على تواريخ الاعتماد والإكمال والصدور والتدقيق.
+
 ## 4. عروض التقارير (RPT)
 
 وحدة RPT لا تملك جداول؛ تقرأ من عروض SQL في مخطط `reporting` يملكها فريق التقنية ويُصدر ترحيلها مع الوحدات:

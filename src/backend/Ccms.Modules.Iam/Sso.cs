@@ -38,6 +38,16 @@ internal sealed class EntraSsoConnector(IOptions<AuthOptions> options, IHttpClie
         }
     }
 
+    public ConnectorDescriptor Describe() => new(Code, NameAr, NameEn, FeatureKeys.SsoEnabled, "oidc_authorization_code",
+    [
+        new("Authentication:Entra:TenantId", "معرّف المستأجر", "Tenant id", O.TenantId.Length > 0),
+        new("Authentication:Entra:ClientId", "معرّف تطبيق تسجيل الدخول", "Sign-in app client id", O.ClientId.Length > 0),
+        new("Authentication:Entra:ClientSecret", "سر تطبيق تسجيل الدخول (من بيئة الخادم)", "Sign-in app secret (server environment)", O.ClientSecret.Length > 0, true),
+        new("Authentication:Entra:AllowedEmailDomains", "نطاقات البريد المسموح لها", "Allowed email domains", O.AllowedEmailDomains.Length > 0),
+    ],
+    "تسجيل الدخول الموحد (OIDC). مزامنة الدليل موصل مستقل (directory) بمفتاح مستقل؛ تعطيل SSO لا يمس الحسابات المحلية الطارئة.",
+    "Single sign-on (OIDC). Directory sync is a separate connector (directory) with its own switch; disabling SSO leaves local break-glass accounts intact.");
+
     private string DiscoveryCacheKey => "sso:discovery:" + O.Authority;
 
     internal sealed record Discovery(string Issuer, string AuthorizationEndpoint, string TokenEndpoint, string JwksUri);

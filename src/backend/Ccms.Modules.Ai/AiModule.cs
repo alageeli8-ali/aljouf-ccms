@@ -184,11 +184,25 @@ public sealed class AiModule : IModule
 }
 
 /// <summary>حالة الاتصال بمزوّد الذكاء الاصطناعي — مستقلة عن التفعيل: التفعيل لا يعني أن الخدمة متاحة أو أن بيانات الاعتماد صحيحة.</summary>
-internal sealed class AiConnector(IFeatureService features, AiProviderRegistry providers) : IConnector
+internal sealed class AiConnector(IFeatureService features, AiProviderRegistry providers, ISecretStore secrets) : IConnector
 {
     public string Code => "ai";
     public string NameAr => "مزوّد الذكاء الاصطناعي";
     public string NameEn => "AI provider";
+
+    public async Task<ConnectorDescriptor> DescribeAsync(CancellationToken ct = default)
+    {
+        var provider = await features.GetValueAsync(FeatureKeys.AiProvider, ct);
+        var url = await features.GetValueAsync(FeatureKeys.AiBaseUrl, ct);
+        var key = await secrets.InfoAsync(SecretNames.AiApiKey, ct);
+        return new(Code, NameAr, NameEn, FeatureKeys.AiEnabled, "api_key",
+        [
+            new(FeatureKeys.AiProvider, "المزوّد (الإعدادات)", "Provider (settings)", provider is { Length: > 0 } and not "none"),
+            new(FeatureKeys.AiBaseUrl, "عنوان المزوّد ضمن المضيفين المسموحين (Ai:AllowedHosts)", "Provider URL within Ai:AllowedHosts", provider == "mock" || url is { Length: > 0 }),
+            new(SecretNames.AiApiKey, "مفتاح API (مخزن الأسرار)", "API key (secret store)", provider == "mock" || key.Source != "none", true),
+        ],
+        "تعطيل الذكاء الاصطناعي لا يوقف البحث التقليدي ولا أي عملية أساسية؛ التفاصيل في الوثيقة 22.", "Disabling AI never stops classic search or any core operation; see doc 22.");
+    }
 
     public async Task<ConnectorHealth> CheckAsync(CancellationToken ct = default)
     {

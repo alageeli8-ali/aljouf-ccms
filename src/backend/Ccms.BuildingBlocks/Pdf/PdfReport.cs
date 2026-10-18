@@ -25,6 +25,7 @@ public sealed class PdfReportOptions
     public string? FooterText { get; init; }
     public string? Watermark { get; init; }
     public bool Rtl { get; init; } = true;
+    public bool Landscape { get; init; }
     public string Author { get; init; } = "";
     public PdfColor Brand { get; init; } = PdfColor.Hex("#006837");
     public PdfColor Accent { get; init; } = PdfColor.Hex("#B28655");
@@ -34,7 +35,8 @@ public sealed class PdfReportOptions
 /// الخطوط مضمنة مقتطعة (Identity-H) مع خريطة ToUnicode ليبقى النص قابلًا للبحث والنسخ.</summary>
 public sealed class PdfReport
 {
-    private const double PageW = 595.28, PageH = 841.89, Margin = 48, Top = 104, Bottom = 64;
+    private const double Margin = 48, Top = 104, Bottom = 64;
+    private readonly double PageW, PageH;
     private readonly PdfReportOptions _o;
     private readonly FontSet _regular, _bold;
     private readonly List<PdfPage> _pages = [];
@@ -44,6 +46,7 @@ public sealed class PdfReport
     public PdfReport(PdfReportOptions options)
     {
         _o = options;
+        (PageW, PageH) = options.Landscape ? (841.89, 595.28) : (595.28, 841.89);
         _regular = new FontSet(new FontFace("F1", TrueTypeFont.Embedded("NotoSansArabic-Regular.ttf")), new FontFace("F2", TrueTypeFont.Embedded("NotoSans-Regular.ttf")));
         _bold = new FontSet(new FontFace("F3", TrueTypeFont.Embedded("NotoSansArabic-Bold.ttf")), new FontFace("F4", TrueTypeFont.Embedded("NotoSans-Bold.ttf")));
         NewPage();
@@ -244,7 +247,7 @@ public sealed class PdfReport
                 }
             }
         }
-        return PdfFileWriter.Write(_pages, _o.Title, _o.Author);
+        return PdfFileWriter.Write(_pages, _o.Title, _o.Author, PageW, PageH);
     }
 }
 
@@ -299,7 +302,7 @@ internal sealed class PdfPage
 
 internal static class PdfFileWriter
 {
-    public static byte[] Write(List<PdfPage> pages, string title, string author)
+    public static byte[] Write(List<PdfPage> pages, string title, string author, double pageW = 595.28, double pageH = 841.89)
     {
         var objects = new List<byte[]>();
         int Reserve() { objects.Add([]); return objects.Count; }
@@ -349,7 +352,7 @@ internal static class PdfFileWriter
             var page = Reserve();
             var content = Reserve();
             pageIds.Add(page);
-            Set(page, $"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << {fontRes} >> /ExtGState << /GS1 << /Type /ExtGState /ca 0.10 /CA 0.10 >> >> >> /Contents {content} 0 R >>");
+            Set(page, $"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {pageW.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} {pageH.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}] /Resources << /Font << {fontRes} >> /ExtGState << /GS1 << /Type /ExtGState /ca 0.10 /CA 0.10 >> >> >> /Contents {content} 0 R >>");
             SetStream(content, "", Encoding.Latin1.GetBytes(p.Content.ToString()));
         }
         Set(pagesId, $"<< /Type /Pages /Kids [{string.Join(" ", pageIds.Select(i => $"{i} 0 R"))}] /Count {pageIds.Count} >>");

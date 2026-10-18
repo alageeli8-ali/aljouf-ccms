@@ -185,6 +185,11 @@ export interface Doc {
   uploadedAt: string;
   uploadedBy: string;
   purpose: string;
+  versionNo?: number;
+  locked?: boolean;
+  lifecycleStatus?: string;
+  recordsClass?: string | null;
+  legalHold?: boolean;
 }
 
 export interface Meeting {

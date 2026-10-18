@@ -27,6 +27,8 @@ public sealed class ConfigurationModule : IModule
         services.AddSingleton<INumberingService, NumberingService>();
         services.AddScoped<SecretStore>();
         services.AddScoped<ISecretStore>(sp => sp.GetRequiredService<SecretStore>());
+        services.AddSingleton<CircuitRegistry>();
+        services.AddScoped<IConnectorRuntime, ConnectorRuntime>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
@@ -41,6 +43,7 @@ public sealed class ConfigurationModule : IModule
         g.MapGet("/connectors", Connectors);
         g.MapPost("/connectors/{code}/check", Check);
         Secrets.Map(g);
+        IntegrationsAdmin.Map(g);
     }
 
     public sealed record UpdateFeatureRequest(

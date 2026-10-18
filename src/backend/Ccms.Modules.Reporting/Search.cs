@@ -68,7 +68,7 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
     {
         if (!me.IsAuthenticated) throw new UnauthenticatedException();
         var tokens = ArabicText.Tokens(q.Text);
-        var types = (q.Types is { Length: > 0 } ? q.Types : SearchTypes.All).Where(SearchTypes.All.Contains).ToHashSet();
+        var types = (q.Types is { Length: > 0 } ? q.Types : SearchTypes.All).Where(SearchTypes.Every.Contains).ToHashSet();
         var limit = Math.Clamp(q.Limit, 1, 50);
         var hits = new List<SearchHit>();
         if (tokens.Length == 0 && q.Status is null && !q.OverdueOnly && q.BodyId is null && q.From is null && q.To is null) return hits;
@@ -174,13 +174,85 @@ internal sealed class SearchService(Db db, IAccessService access, ICurrentUser m
                 r.GetDateTime(6), ArabicText.Snippet(r.GetString(7), tokens), r.GetString(8), $"/meetings/{r.GetGuid(0)}", r.GetInt32(9)), ct));
         }
 
+        var dated = q.From is not null || q.To is not null;
+        if (types.Contains(SearchTypes.Body) && !q.OverdueOnly && tokens.Length > 0)
+        {
+            await Filter(Permissions.BodyView, "b");
+            var score = Score("b.name_ar || ' ' || coalesce(b.name_en, '') || ' ' || b.code", "coalesce(b.mandate_ar, '')");
+            hits.AddRange(await db.QueryAsync($"""
+                SELECT * FROM (
+                  SELECT b.id, b.name_ar, b.code, b.status, b.created_at, coalesce(b.mandate_ar, '') AS txt, b.classification, ({score}) AS score
+                  FROM bodies.bodies b
+                  WHERE (@bAll::boolean OR b.id = ANY(@bIds::uuid[])) AND (@body::uuid IS NULL OR b.id = @body) AND (@status::text IS NULL OR b.status = @status OR @status = 'open')
+                ) x WHERE score > 0 ORDER BY score DESC, name_ar LIMIT @limit
+                """, args, r => new SearchHit(SearchTypes.Body, r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetGuid(0), r.GetString(1), r.GetString(3),
+                r.GetDateTime(4), ArabicText.Snippet(r.GetString(5), tokens), r.GetString(6), $"/bodies/{r.GetGuid(0)}", r.GetInt32(7)), ct));
+        }
+
+        if (types.Contains(SearchTypes.Member) && !q.OverdueOnly && !dated && tokens.Length > 0)
+        {
+            await Filter(Permissions.BodyView, "bm");
+            var score = Score("u.display_name_ar || ' ' || coalesce(u.display_name_en, '')", "coalesce(u.job_title, '') || ' ' || coalesce(e.name_ar, '')");
+            hits.AddRange(await db.QueryAsync($"""
+                SELECT * FROM (
+                  SELECT m.id, u.display_name_ar, m.role, m.body_id, b.name_ar, m.status, m.created_at,
+                         coalesce(u.job_title, '') || CASE WHEN e.name_ar IS NULL THEN '' ELSE ' — ' || e.name_ar END AS txt, b.classification, ({score}) AS score
+                  FROM bodies.body_members m JOIN bodies.bodies b ON b.id = m.body_id JOIN iam.users u ON u.id = m.user_id
+                  LEFT JOIN org.external_entities e ON e.id = m.represents_entity_id
+                  WHERE (@bmAll::boolean OR m.body_id = ANY(@bmIds::uuid[])) AND (@body::uuid IS NULL OR m.body_id = @body)
+                    AND (@status::text IS NULL OR m.status = @status OR (@status = 'open' AND m.status = 'active'))
+                ) x WHERE score > 0 ORDER BY score DESC, status, display_name_ar LIMIT @limit
+                """, args, r => new SearchHit(SearchTypes.Member, r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetGuid(3), r.GetString(4), r.GetString(5),
+                r.GetDateTime(6), r.GetString(7), r.GetString(8), $"/bodies/{r.GetGuid(3)}", r.GetInt32(9)), ct));
+        }
+
+        if (types.Contains(SearchTypes.Document) && !q.OverdueOnly)
+        {
+            // المرفق يُرى بصلاحية سجله المالك: مستندات المهام بصلاحية المهام (أو العلاقة الشخصية الداخلية، أو المشاركة الصريحة مع الجهة)، وغيرها بصلاحية المستندات
+            await Filter(Permissions.DocumentView, "d");
+            await Filter(Permissions.TaskView, "dt");
+            var score = Score("d.file_name", "x.owner_title || ' ' || coalesce(x.owner_ref, '')");
+            hits.AddRange(await db.QueryAsync($"""
+                SELECT * FROM (
+                  SELECT DISTINCT ON (d.id) d.id, d.file_name, x.owner_ref, x.body_id, b.name_ar, d.lifecycle_status, d.uploaded_at,
+                         x.owner_title || ' · ' || l.purpose || ' · v' || d.version_no AS txt, d.classification, ({score}) AS score, x.link
+                  FROM docs.document_links l JOIN docs.documents d ON d.id = l.document_id
+                  CROSS JOIN LATERAL (
+                    SELECT o.body_id, o.title AS owner_title, o.ref AS owner_ref, o.link FROM (
+                      SELECT b2.id AS body_id, b2.name_ar AS title, b2.code AS ref, '/bodies/' || b2.id AS link FROM bodies.bodies b2 WHERE l.owner_type = 'body' AND b2.id = l.owner_id
+                      UNION ALL SELECT m.body_id, m.title_ar, m.reference_no, '/meetings/' || m.id FROM meetings.meetings m WHERE l.owner_type = 'meeting' AND m.id = l.owner_id
+                      UNION ALL SELECT m.body_id, ai.title_ar, m.reference_no, '/meetings/' || m.id FROM meetings.agenda_items ai JOIN meetings.meetings m ON m.id = ai.meeting_id
+                                WHERE l.owner_type = 'agenda_item' AND ai.id = l.owner_id
+                      UNION ALL SELECT m.body_id, m.title_ar, m.reference_no, '/minutes/' || mi.id FROM minutes.minutes mi JOIN meetings.meetings m ON m.id = mi.meeting_id
+                                WHERE l.owner_type = 'minutes' AND mi.id = l.owner_id
+                      UNION ALL SELECT r.body_id, r.title_ar, r.number, '/resolutions/' || r.id FROM resolutions.resolutions r WHERE l.owner_type = 'resolution' AND r.id = l.owner_id
+                      UNION ALL SELECT t.body_id, t.title_ar, t.reference_no, '/tasks/' || t.id FROM tasks.tasks t WHERE l.owner_type = 'task' AND t.id = l.owner_id
+                        AND ((@dtAll::boolean OR t.body_id = ANY(@dtIds::uuid[]))
+                             OR ((t.assignee_user_id = @me OR t.executor_user_id = @me OR t.accountable_user_id = @me OR t.verifier_user_id = @me)
+                                 AND (l.external_visible OR (SELECT u.user_type FROM iam.users u WHERE u.id = @me) = 'internal')))
+                    ) o
+                  ) x
+                  JOIN bodies.bodies b ON b.id = x.body_id
+                  WHERE d.is_current AND d.lifecycle_status <> 'destroyed' AND d.deleted_at IS NULL
+                    AND (l.owner_type = 'task' OR @dAll::boolean OR x.body_id = ANY(@dIds::uuid[]))
+                    AND (@body::uuid IS NULL OR x.body_id = @body) AND (@status::text IS NULL OR d.lifecycle_status = @status OR @status = 'open')
+                    AND (@from::timestamptz IS NULL OR d.uploaded_at >= @from) AND (@to::timestamptz IS NULL OR d.uploaded_at <= @to)
+                  ORDER BY d.id
+                ) y WHERE score > 0 ORDER BY score DESC, uploaded_at DESC LIMIT @limit
+                """, args, r => new SearchHit(SearchTypes.Document, r.GetGuid(0), r.GetString(1), r.Str("owner_ref"), r.GetGuid(3), r.GetString(4), r.GetString(5),
+                r.GetDateTime(6), r.GetString(7), r.GetString(8), r.GetString(10), r.GetInt32(9)), ct));
+        }
+
         return hits.OrderByDescending(h => h.Score).ThenByDescending(h => h.Date).Take(limit).ToList();
     }
 
-    public static async Task<IResult> Endpoint(string? q, string? types, Guid? bodyId, string? status, bool? overdue, ISearchService search, CancellationToken ct)
+    public static async Task<IResult> Endpoint(string? q, string? types, Guid? bodyId, string? status, bool? overdue, DateOnly? from, DateOnly? to, int? limit,
+        ISearchService search, CancellationToken ct)
     {
-        var list = await search.SearchAsync(new SearchQuery(q, types?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), bodyId,
-            string.IsNullOrWhiteSpace(status) ? null : status, overdue ?? false, Limit: 30), ct);
-        return Results.Ok(new { query = q, tokens = ArabicText.Tokens(q), items = list });
+        if (from is not null && to is not null && from > to) throw AppValidationException.For("from", "بداية الفترة بعد نهايتها");
+        var t = types?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var list = await search.SearchAsync(new SearchQuery(q, t is { Length: > 0 } ? t : SearchTypes.Every, bodyId,
+            string.IsNullOrWhiteSpace(status) ? null : status, overdue ?? false, from, to, Limit: Math.Clamp(limit ?? 30, 1, 50)), ct);
+        return Results.Ok(new { query = q, tokens = ArabicText.Tokens(q), items = list, types = SearchTypes.Every });
     }
 }

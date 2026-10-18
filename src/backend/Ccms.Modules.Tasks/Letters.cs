@@ -298,7 +298,18 @@ internal static class Letters
                 new Dictionary<string, object?> { ["reason"] = reason });
         }
         var pdf = l.PdfDocumentId is { } doc ? await store.ReadAsync(doc, ct) : null;
-        var outgoing = await gateway.SubmitAsync(new CorrespondenceLetter(l.Id, l.ReferenceNo, l.RecipientName, l.Subject, l.BodyText, pdf ?? []), ct);
+        string outgoing;
+        try
+        {
+            outgoing = await gateway.SubmitAsync(new CorrespondenceLetter(l.Id, l.ReferenceNo, l.RecipientName, l.Subject, l.BodyText, pdf ?? []), ct);
+        }
+        catch (IntegrationFailedException e)
+        {
+            // لا تتغير حالة الخطاب؛ إعادة الإرسال آمنة بمفتاح عدم التكرار
+            await audit.WriteAsync(new AuditEntry("TSK", "task.letter_send_failed", "assignment_letter", id.ToString(), After: new { reason = e.Reason }, Outcome: "failure"), ct);
+            throw new ConflictException("correspondence-failed", "تعذر الإرسال عبر نظام المراسلات؛ لم يُرسل الخطاب. أعد المحاولة لاحقًا أو أرسله يدويًا وسجّل رقم الصادر",
+                new Dictionary<string, object?> { ["reason"] = e.Reason });
+        }
         await db.InTransactionAsync(async tx =>
         {
             await tx.ExecuteAsync("""
