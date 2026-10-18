@@ -17,6 +17,7 @@ import SettingsPage from './pages/SettingsPage';
 import { ChangePasswordPage, LetterPage, PortalHome, PortalTaskPage, TaskDetailPage, TasksPage, WorkflowPage } from './pages/TasksPages';
 import UsersPage from './pages/UsersPage';
 import { MockProviderPage, SignatureRoutesPage, SignatureVerifyPage } from './pages/esign/ESign';
+import { AiAdminPage, SearchPage } from './pages/ai/Ai';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { me, loading } = useAuth();
@@ -34,6 +35,12 @@ function RequirePermission({ permission, children }: { permission: string; child
   const { can } = useAuth();
   const { t } = useTranslation();
   return can(permission) ? <>{children}</> : <Result status="403" title="403" subTitle={t('common.forbidden')} />;
+}
+
+function RequireAny({ permissions, children }: { permissions: string[]; children: ReactNode }) {
+  const { can } = useAuth();
+  const { t } = useTranslation();
+  return permissions.some(can) ? <>{children}</> : <Result status="403" title="403" subTitle={t('common.forbidden')} />;
 }
 
 export default function App() {
@@ -64,6 +71,8 @@ export default function App() {
         <Route path="esign/mock/:token" element={<MockProviderPage />} />
         <Route path="signature-verify" element={<SignatureVerifyPage />} />
         <Route path="signature-routes" element={<RequirePermission permission="esign.routes.manage"><SignatureRoutesPage /></RequirePermission>} />
+        <Route path="search" element={<SearchPage />} />
+        <Route path="ai-admin" element={<RequireAny permissions={['admin.settings.view', 'ai.logs.view']}><AiAdminPage /></RequireAny>} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="users" element={<RequirePermission permission="admin.users.manage"><UsersPage /></RequirePermission>} />

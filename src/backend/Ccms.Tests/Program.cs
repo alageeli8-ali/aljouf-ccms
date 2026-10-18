@@ -52,6 +52,7 @@ results.AddRange(await Runner.RunAsync(new Phase2Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase3Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase4Suite(ctx)));
 results.AddRange(await Runner.RunAsync(new Phase6Suite(ctx)));
+await using (var p7 = new Phase7Suite(ctx)) results.AddRange(await Runner.RunAsync(p7));
 ctx.HistoryCountBeforeRestart = (await ctx.AdminClient!.GetJsonAsync("/api/v1/admin/features/history"))["total"]!.GetValue<long>();
 
 // المرحلة ب: إيقاف ثم تشغيل بإعدادات مختلفة على البيانات نفسها
@@ -81,7 +82,7 @@ Console.WriteLine($"\n{passed}/{results.Count} ناجح — {sw.Elapsed.TotalSec
 if (args.Length > 0)
 {
     var md = new StringBuilder();
-    md.AppendLine("# نتائج اختبارات المراحل 1–4 ووحدة التوقيع الإلكتروني").AppendLine();
+    md.AppendLine("# نتائج اختبارات المراحل 1–4 ووحدتي التوقيع الإلكتروني والذكاء الاصطناعي").AppendLine();
     md.AppendLine($"- التاريخ: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
     md.AppendLine($"- البيئة: PostgreSQL ({server}) — قاعدة جديدة `{dbName}` لكل تشغيل؛ التطبيق يعمل كعملية مستقلة ببيئة Testing");
     md.AppendLine($"- النتيجة: **{passed}/{results.Count} ناجح** خلال {sw.Elapsed.TotalSeconds:0} ثانية").AppendLine();
@@ -114,6 +115,9 @@ namespace Ccms.Tests
             "AI_AUDIO_TRANSCRIPTION_ENABLED", "E_SIGNATURE_ENABLED", "E_SIGNATURE_PROVIDER", "E_SIGNATURE_METHOD", "E_SIGNATURE_MEMBER_REQUIRED",
             "E_SIGNATURE_CHAIR_REQUIRED", "E_SIGNATURE_SECRETARY_REQUIRED", "E_SIGNATURE_SEQUENTIAL", "E_SIGNATURE_PDF_OUTPUT",
             "E_SIGNATURE_REAUTH_REQUIRED", "EXTERNAL_PORTAL_ENABLED", "EMAIL_INTEGRATION_ENABLED", "CORRESPONDENCE_INTEGRATION_ENABLED", "SSO_ENABLED",
+            // إعدادات مزوّد الذكاء الاصطناعي (V012)
+            "AI_PROVIDER", "AI_PROVIDER_HOSTING", "AI_MAX_CLASSIFICATION", "AI_BASE_URL", "AI_MODEL", "AI_TRANSCRIPTION_MODEL", "AI_TIMEOUT_SECONDS",
+            "AI_DAILY_REQUESTS_PER_USER", "AI_MONTHLY_REQUEST_LIMIT", "AI_MONTHLY_TOKEN_LIMIT", "AI_USAGE_ALERT_PERCENT", "AI_RETENTION_DAYS",
         ];
 
         public AppInstance? App { get; set; }

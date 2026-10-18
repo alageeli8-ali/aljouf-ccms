@@ -25,6 +25,8 @@ public sealed class ConfigurationModule : IModule
         services.AddScoped<IConnectorStatusStore>(sp => sp.GetRequiredService<ConnectorStatusStore>());
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<INumberingService, NumberingService>();
+        services.AddScoped<SecretStore>();
+        services.AddScoped<ISecretStore>(sp => sp.GetRequiredService<SecretStore>());
     }
 
     public void MapEndpoints(IEndpointRouteBuilder api)
@@ -38,10 +40,11 @@ public sealed class ConfigurationModule : IModule
         g.MapPut("/features/{key}", Update).Validate<UpdateFeatureRequest>();
         g.MapGet("/connectors", Connectors);
         g.MapPost("/connectors/{code}/check", Check);
+        Secrets.Map(g);
     }
 
     public sealed record UpdateFeatureRequest(
-        [property: Required(ErrorMessage = "القيمة مطلوبة"), MaxLength(100)] string Value,
+        [property: Required(AllowEmptyStrings = true, ErrorMessage = "القيمة مطلوبة"), MaxLength(300)] string Value,
         [property: Required(ErrorMessage = "سبب التغيير مطلوب"), MinLength(5, ErrorMessage = "اذكر سببًا واضحًا (5 أحرف على الأقل)"), MaxLength(1000)] string Reason,
         bool ConfirmImpact = false);
 
@@ -71,6 +74,9 @@ public sealed class ConfigurationModule : IModule
             storedValue = f.Value,
             defaultValue = f.DefaultValue,
             allowedValues = f.AllowedValues,
+            minValue = f.MinValue,
+            maxValue = f.MaxValue,
+            maxLength = f.MaxLength,
             parentKey = f.ParentKey,
             // حالة الإعداد
             effectiveEnabled = store.IsEffective(all, f.Key),
@@ -117,7 +123,8 @@ public sealed class ConfigurationModule : IModule
     }
 
     private static async Task<IResult> Update(string key, UpdateFeatureRequest req, FeatureStore store, Db db, IAccessService access,
-        ICurrentUser me, IAuditWriter audit, IEnumerable<IFeatureImpactProvider> providers, ILoggerFactory logs, CancellationToken ct)
+        ICurrentUser me, IAuditWriter audit, IEnumerable<IFeatureImpactProvider> providers, IEnumerable<IFeatureValueValidator> validators,
+        ILoggerFactory logs, CancellationToken ct)
     {
         async Task Log(string result, string? oldValue, string? detail, IReadOnlyList<FeatureImpactItem>? impact = null) =>
             await db.ExecuteAsync("""
@@ -153,8 +160,16 @@ public sealed class ConfigurationModule : IModule
             store.LockedValue(key) is not null ? "المفتاح مقفل من إعدادات الخادم ولا يمكن تغييره من الواجهة" :
             f.ValueType == "boolean" && req.Value is not ("true" or "false") ? "القيمة يجب أن تكون true أو false" :
             f.ValueType == "enum" && !(f.AllowedValues ?? []).Contains(req.Value) ? $"القيمة غير مسموحة؛ المسموح: {string.Join("، ", f.AllowedValues ?? [])}" :
+            f.ValueType == "integer" && !long.TryParse(req.Value, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out _) ? "القيمة يجب أن تكون عددًا صحيحًا" :
+            f.ValueType == "integer" && f.MinValue is { } min && long.Parse(req.Value, System.Globalization.CultureInfo.InvariantCulture) < min ? $"أقل قيمة مسموحة: {min}" :
+            f.ValueType == "integer" && f.MaxValue is { } max && long.Parse(req.Value, System.Globalization.CultureInfo.InvariantCulture) > max ? $"أعلى قيمة مسموحة: {max}" :
+            f.ValueType == "text" && f.MaxLength is { } len && req.Value.Length > len ? $"أقصى طول: {len} حرفًا" :
+            f.ValueType == "text" && req.Value.Any(char.IsControl) ? "القيمة تحتوي محارف غير مسموحة" :
+            f.ValueType != "text" && req.Value.Length == 0 ? "القيمة مطلوبة" :
             req.Value == f.Value ? "القيمة الجديدة مطابقة للقيمة الحالية" :
             null;
+        foreach (var v in validators.Where(v => v.FeatureKeys.Contains(key)))
+            invalid ??= await v.ValidateAsync(key, req.Value, ct);
         if (invalid is not null)
         {
             await Log("rejected_validation", current, invalid);

@@ -1,7 +1,7 @@
 // صفحة المحضر: المحرر، ودورة الاعتماد القابلة للتهيئة، والملاحظات، والإصدارات، والتوقيعات، وسجل النشاط.
 import { Alert, App, Badge, Button, Card, Col, Dropdown, Input, Modal, Row, Select, Skeleton, Space, Steps, Tabs, Tag, Typography } from 'antd';
 import {
-  AuditOutlined, CheckCircleOutlined, DownOutlined, EditOutlined, FilePdfOutlined, RollbackOutlined, SafetyCertificateOutlined, SendOutlined, UploadOutlined,
+  AuditOutlined, CheckCircleOutlined, RobotOutlined, DownOutlined, EditOutlined, FilePdfOutlined, RollbackOutlined, SafetyCertificateOutlined, SendOutlined, UploadOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -16,6 +16,7 @@ import { formatDateTime } from '../../lib/format';
 import { MinutesEditor } from './Editor';
 import { CommentsPanel, SignaturesPanel, VersionsPanel } from './Review';
 import { ExternalApprovalModal, WetSignatureModal } from './Approvals';
+import { AiMinutesPanel, useAiOutputsExist } from '../ai/Ai';
 
 export default function MinutesDetailPage() {
   const { id } = useParams();
@@ -29,6 +30,8 @@ export default function MinutesDetailPage() {
   const [wet, setWet] = useState(false);
   const [external, setExternal] = useState(false);
   const q = useQuery({ queryKey: ['minutes', id], queryFn: () => get<MinutesDetail>(`/api/v1/minutes/${id}`) });
+  const { feature } = useAuth();
+  const aiOutputs = useAiOutputsExist('minutes', id);
   const refresh = () => {
     for (const k of [['minutes', id], ['minutes-resolutions', id], ['minutes-comments', id], ['minutes-versions', id], ['minutes-activity', id], ['minutes']])
       void qc.invalidateQueries({ queryKey: k });
@@ -133,6 +136,7 @@ export default function MinutesDetailPage() {
               { key: 'comments', label: <span>{t('minutes.tabs.comments')} <Badge count={m.openComments} size="small" /></span>, children: <CommentsPanel detail={d} onChange={refresh} /> },
               { key: 'signatures', label: t('minutes.tabs.signatures'), children: <SignaturesPanel detail={d} onChange={refresh} /> },
               { key: 'versions', label: t('minutes.tabs.versions'), children: <VersionsPanel minutesId={m.id} /> },
+              ...(feature('AI_ENABLED') || aiOutputs ? [{ key: 'ai', label: <span><RobotOutlined /> {t('ai.panelTab')}</span>, children: <AiMinutesPanel detail={d} onChange={refresh} /> }] : []),
               { key: 'activity', label: t('minutes.tabs.activity'), children: <ActivityTimeline url={`/api/v1/minutes/${m.id}/activity`} queryKey={['minutes-activity', m.id]} /> },
             ]} />
           </Card>

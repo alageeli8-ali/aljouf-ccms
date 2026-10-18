@@ -14,11 +14,12 @@ public sealed class ReportingModule : IModule
 {
     public string Code => "RPT";
 
-    public void AddServices(IServiceCollection services, IConfiguration configuration) { }
+    public void AddServices(IServiceCollection services, IConfiguration configuration) => services.AddScoped<ISearchService, SearchService>();
 
     public void MapEndpoints(IEndpointRouteBuilder api)
     {
         api.MapGet("/dashboard", Dashboard).WithTags("Reports");
+        api.MapGet("/search", SearchService.Endpoint).WithTags("Search");
         var g = api.MapGroup("/reports").WithTags("Reports");
         g.MapGet("/tasks-by-body", TasksByBody);
         g.MapGet("/meetings-by-month", MeetingsByMonth);

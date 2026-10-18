@@ -90,8 +90,10 @@ function FlagCard({ category, flags, loading, canManage, onChange }: {
               const disabled = !canManage || f.locked;
               const control = f.valueType === 'boolean'
                 ? <Switch checked={f.value === 'true'} disabled={disabled} onChange={(v) => onChange(f, String(v))} aria-label={f.key} />
-                : <Select size="small" value={f.value} disabled={disabled} style={{ minWidth: 200 }} onChange={(v) => onChange(f, v)}
-                    options={(f.allowedValues ?? []).map((v) => ({ value: v, label: t(`settings.enumValues.${v}`, { defaultValue: v }) }))} />;
+                : f.valueType === 'enum'
+                  ? <Select size="small" value={f.value} disabled={disabled} style={{ minWidth: 200 }} onChange={(v) => onChange(f, v)}
+                      options={(f.allowedValues ?? []).map((v) => ({ value: v, label: t(`settings.enumValuesByKey.${f.key}.${v}`, { defaultValue: t(`settings.enumValues.${v}`, { defaultValue: v }) }) }))} />
+                  : <ValueEditor flag={f} disabled={disabled} onSubmit={(v) => onChange(f, v)} />;
               return f.locked ? <Tooltip title={t('settings.locked')}><Space>{control}<LockOutlined /></Space></Tooltip> : control;
             },
           },
@@ -119,6 +121,24 @@ function FlagCard({ category, flags, loading, canManage, onChange }: {
         ]}
       />
     </Card>
+  );
+}
+
+/** قيمة عددية أو نصية: تُحرر ثم تُرسل لنافذة التأكيد بالسبب؛ الحدود يتحقق منها الخادم أيضًا. */
+function ValueEditor({ flag, disabled, onSubmit }: { flag: FeatureFlag; disabled: boolean; onSubmit: (v: string) => void }) {
+  const { t } = useTranslation();
+  const [v, setV] = useState(flag.value);
+  useEffect(() => setV(flag.value), [flag.value]);
+  const changed = v.trim() !== flag.value;
+  return (
+    <Space.Compact size="small" style={{ minWidth: 200 }}>
+      {flag.valueType === 'integer'
+        ? <Input type="number" value={v} disabled={disabled} min={flag.minValue ?? undefined} max={flag.maxValue ?? undefined} onChange={(e) => setV(e.target.value)}
+            onPressEnter={() => changed && onSubmit(v.trim())} aria-label={flag.key} style={{ width: 130 }} />
+        : <Input value={v} disabled={disabled} maxLength={flag.maxLength ?? undefined} placeholder={t('settings.emptyValue')} onChange={(e) => setV(e.target.value)}
+            onPressEnter={() => changed && onSubmit(v.trim())} aria-label={flag.key} style={{ width: 200 }} className="mono" />}
+      <Button disabled={disabled || !changed} onClick={() => onSubmit(v.trim())}>{t('common.save')}</Button>
+    </Space.Compact>
   );
 }
 
@@ -156,8 +176,8 @@ function ChangeModal({ flag, value, onClose }: { flag: FeatureFlag; value: strin
       okButtonProps={{ disabled: reason.trim().length < 5 || (needsConfirm && !confirmed), danger: needsConfirm }} okText={t('common.confirm')} cancelText={t('common.cancel')}>
       <Descriptions column={1} size="small" bordered style={{ marginBottom: 12 }}>
         <Descriptions.Item label={t('common.name')}>{i18n.language === 'en' ? flag.nameEn : flag.nameAr} <span className="mono">({flag.key})</span></Descriptions.Item>
-        <Descriptions.Item label={t('settings.from')}><span className="mono">{flag.value}</span></Descriptions.Item>
-        <Descriptions.Item label={t('settings.to')}><span className="mono">{value}</span></Descriptions.Item>
+        <Descriptions.Item label={t('settings.from')}><span className="mono">{flag.value || '—'}</span></Descriptions.Item>
+        <Descriptions.Item label={t('settings.to')}><span className="mono">{value || '—'}</span></Descriptions.Item>
       </Descriptions>
       {needsConfirm && (
         <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={t('settings.impactTitle')}

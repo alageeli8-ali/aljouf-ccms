@@ -725,6 +725,8 @@ erDiagram
 
 ### 3.14 الذكاء الاصطناعي (اختياري) — `ai`
 
+> **تصميم أولي حلّ محله المنفذ في §3.21** (الترحيل V012)؛ يبقى هنا للمرجعية.
+
 #### ai.ai_jobs
 `id`، `capability` ∈ `memo_summary`, `minutes_draft`, `action_extraction`, `assistant_qa`, `transcription`, `translation`، `requested_by`، `body_id`، `subject_type`، `subject_id`، `input_classification`، `input_sha256`، `provider`، `model`، `prompt_template_code`، `prompt_template_version`، `status` ∈ `queued`, `running`, `succeeded`, `failed`, `blocked`, `cancelled`، `blocked_reason`، `tokens_in`، `tokens_out`، `latency_ms`، `error`، `created_at`، `completed_at`.
 
@@ -908,6 +910,30 @@ erDiagram
 - `minutes.minutes_approvals`: الطرق الثلاث الجديدة.
 - `docs.document_links`: الغرض `signature_document` (نسخ التوقيع والنسخ الموقعة).
 - `config.feature_flags`: قيم القائمتين `E_SIGNATURE_PROVIDER` و`E_SIGNATURE_METHOD` (07 §0)، وقيد عام يلزم القيمة بالقائمة المسموحة.
+
+### 3.21 جداول وتعديلات وحدة الذكاء الاصطناعي (المنفذة فعليًا)
+
+الترحيل V012 هو المرجع الملزم (22). الوحدة لا تكتب في أي جدول خارج مخطط `ai` (عدا المستندات عبر `IDocumentStore` والتدقيق والإشعارات عبر عقودها).
+
+#### ai.outputs
+`id`، `function` (الوظائف العشر)، `subject_type` ∈ `minutes`, `meeting`, `body`, `task`, `query`, `portfolio` و`subject_id`، `body_id`، `requested_by`، `status` ∈ `draft`, `saved`, `applied`, `discarded`, `expired`, `held`، `content` (يُفرغ بانتهاء الاحتفاظ لغير المحفوظ)، `citations` (مراجع لسجلات حقيقية)، `warnings`، `provider`، `model`، `test_only`، `prompt_version`، `input_sha256`، `classification`، `source_count`، `held_reason`، `reviewed_by/at`، `review_note`، `applied_refs` (ما أنشأه المستخدم بنفسه)، `purged_at`. لا حذف.
+
+#### ai.requests (سجل التشغيل — إلحاقي)
+`function`، `user_id`، `body_id`، `subject_type/id`، `status` ∈ `succeeded`, `failed`, `timeout`, `provider_unavailable`, `not_configured`, `invalid_output`, `blocked_disabled`, `blocked_classification`, `blocked_quota`, `held`, `no_sources`، `error_code`، `duration_ms`، `input_tokens`، `output_tokens`، `usage_estimated`، `provider`، `model`، `prompt_version`، `input_sha256`، `source_count`، `excluded_sources`، `redactions`، `max_classification`، `output_id`، `job_id`، `counted` (يدخل في الحدود). **لا نص مدخل ولا مخرج.**
+
+#### ai.jobs / ai.job_events
+مهام التفريغ الصوتي: `meeting_id`، `body_id`، `document_id` (التسجيل)، `status` ∈ `queued`, `running`, `completed`, `failed`, `held`, `cancelled`، `consent` (jsonb: تأكيد ومرجع الموافقة ومن وثقها — إلزامي بقيد)، `attempts`، `last_error`، `held_reason`، `output_id`، `closed_by`، `close_reason`؛ وأحداثها إلحاقية.
+
+#### ai.usage_alerts
+تنبيه واحد لكل (`period`، `metric` ∈ `requests`, `tokens`، `threshold`) بالقيمة والحد.
+
+#### config.secrets / config.secret_history
+الأسرار مشفرة (AES-256-GCM): `name`، `ciphertext`، `key_id` (بصمة المفتاح الرئيسي)، `fingerprint`، `updated_at/by`؛ وسجلها الإلحاقي: `action` ∈ `set`, `cleared`, `denied`، البصمة والسبب والمسؤول — دون القيمة.
+
+**تعديلات على جداول قائمة:**
+- `config.feature_flags`: `value_type` يقبل `integer` و`text`، وأعمدة `min_value`، `max_value`، `max_length` بقيود تحقق؛ و12 إعدادًا جديدًا (07 §0).
+- `docs.document_links`: الغرض `ai_recording` (التسجيلات المرفوعة للتفريغ).
+- دالة `public.ar_norm(text)` لتطبيع النص العربي في البحث التقليدي.
 
 ## 4. عروض التقارير (RPT)
 

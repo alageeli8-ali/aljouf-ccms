@@ -163,3 +163,26 @@ body { background: #f4f5f1; -webkit-font-smoothing: antialiased; }
   border: 1px solid #ffa39e; color: #a8071a; font-weight: 600; text-align: center; }
 .route-steps { margin-bottom: 12px; }
 .route-step-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px; margin-bottom: 8px; background: #fafbf9; border: 1px solid #eef0ec; border-radius: 8px; }
+
+/* ============ الذكاء الاصطناعي ============ */
+.ai-banner { background: #f9f6fd; border: 1px solid #e3d7f3; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.ai-banner-help { color: #5f6b64; font-size: 12px; margin-top: 6px; }
+.ai-warnings { margin: 0; padding-inline-start: 18px; }
+.ai-citations { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ai-cite { white-space: normal; max-width: 100%; }
+.ai-ref { color: #6b3fa0; font-size: 11px; font-weight: 600; }
+sup.ai-ref { margin-inline-start: 2px; cursor: help; }
+.ai-refs { white-space: nowrap; }
+.ai-statements { margin: 0 0 8px; padding-inline-start: 20px; }
+.ai-statements li { margin-bottom: 4px; line-height: 1.8; }
+.ai-sections h4 { margin: 12px 0 4px; color: #006837; font-size: 14px; }
+.ai-headline { font-weight: 600; font-size: 15px; background: #f3f8f5; border-inline-start: 3px solid #006837; padding: 8px 12px; border-radius: 4px; }
+.ai-item { margin-bottom: 10px; }
+.ai-quote { margin: 0 0 8px; padding: 6px 12px; border-inline-start: 3px solid #B28655; background: #fbf8f3; color: #3b3b3b; }
+.ai-pre { white-space: pre-wrap; line-height: 1.8; }
+.ai-transcript { max-height: 420px; overflow: auto; background: #fafafa; padding: 10px; border-radius: 6px; }
+.ai-result { border-color: #e3d7f3; }
+.ai-example { cursor: pointer; margin-top: 6px; }
+.ai-interpretation { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.ai-inline-result { margin-top: 8px; padding: 8px; border: 1px dashed #e3d7f3; border-radius: 6px; }
+.ai-mock-faults { margin-top: 12px; display: flex; gap: 8px; align-items: center; }

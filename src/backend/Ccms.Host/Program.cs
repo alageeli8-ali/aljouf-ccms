@@ -4,6 +4,7 @@ using Ccms.BuildingBlocks.Data;
 using Ccms.BuildingBlocks.Web;
 using Ccms.Contracts;
 using Ccms.Host;
+using Ccms.Modules.Ai;
 using Ccms.Modules.Audit;
 using Ccms.Modules.Bodies;
 using Ccms.Modules.Configuration;
@@ -31,7 +32,7 @@ IModule[] modules =
 [
     new IamModule(), new OrgModule(), new ConfigurationModule(), new AuditModule(), new NotificationsModule(),
     new BodiesModule(), new MeetingsModule(), new MinutesModule(), new ResolutionsModule(), new TasksModule(),
-    new DocumentsModule(), new ReportingModule(), new IntegrationsModule(), new SignaturesModule(),
+    new DocumentsModule(), new ReportingModule(), new IntegrationsModule(), new SignaturesModule(), new AiModule(),
 ];
 foreach (var m in modules) m.AddServices(builder.Services, builder.Configuration);
 

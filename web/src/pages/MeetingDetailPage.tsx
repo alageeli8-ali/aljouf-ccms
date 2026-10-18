@@ -2,6 +2,7 @@ import { Alert, App, Badge, Button, Card, DatePicker, Descriptions, Dropdown, Fo
 import {
   CalendarOutlined, CheckOutlined, CloseOutlined, DownOutlined, EditOutlined, FileAddOutlined, FileTextOutlined, LinkOutlined,
   PlayCircleOutlined, QuestionOutlined, SendOutlined, StopOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -18,6 +19,7 @@ import { MeetingFormModal } from './MeetingsPage';
 import { AgendaEditor } from './meeting/Agenda';
 import { AttendancePanel, QuorumPanel } from './meeting/Attendance';
 import { VotingPanel } from './meeting/Voting';
+import { AiMeetingPanel, useAiOutputsExist } from './ai/Ai';
 
 export default function MeetingDetailPage() {
   const { id } = useParams();
@@ -31,6 +33,8 @@ export default function MeetingDetailPage() {
   const [editing, setEditing] = useState(false);
   const [quorumBlock, setQuorumBlock] = useState<QuorumResult | null>(null);
   const q = useQuery({ queryKey: ['meeting', id], queryFn: () => get<MeetingDetail>(`/api/v1/meetings/${id}`) });
+  const { feature } = useAuth();
+  const aiOutputs = useAiOutputsExist('meeting', id);
   const invitees = useQuery({ queryKey: ['invitations', id], queryFn: () => get<Invitee[]>(`/api/v1/meetings/${id}/invitations`), enabled: q.isSuccess });
   const refresh = () => {
     for (const k of [['meeting', id], ['invitations', id], ['quorum', id], ['meeting-activity', id], ['meetings'], ['calendar']]) void qc.invalidateQueries({ queryKey: k });
@@ -151,6 +155,7 @@ export default function MeetingDetailPage() {
             children: <AttendancePanel meeting={m} invitees={invitees.data ?? []} loading={invitees.isLoading} agenda={agenda} permissions={permissions} onChange={refresh} /> },
           { key: 'quorum', label: t('meetings.tabs.quorum'), children: <QuorumPanel meetingId={id!} canCheck={attend} /> },
           { key: 'voting', label: t('meetings.tabs.voting'), children: <VotingPanel meeting={m} /> },
+          ...(feature('AI_ENABLED') || aiOutputs ? [{ key: 'ai', label: <span><RobotOutlined /> {t('ai.panelTab')}</span>, children: <AiMeetingPanel meetingId={id!} bodyId={m.bodyId} permissions={permissions} preparing={preparing} /> }] : []),
           { key: 'activity', label: t('meetings.tabs.activity'), children: <ActivityTimeline url={`/api/v1/meetings/${id}/activity`} queryKey={['meeting-activity', id]} /> },
         ]} />
       </Card>

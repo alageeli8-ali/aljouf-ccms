@@ -15,6 +15,7 @@ import { useReasonPrompt } from '../../components/governance';
 import { dualDate, formatDateTime } from '../../lib/format';
 import { LetterCreateModal } from './Letters';
 import { DueCell, PriorityTag, TaskStatusTag } from './shared';
+import { AiTaskLink } from '../ai/Ai';
 
 export const DELAY_CAUSES = ['dependency', 'resources', 'scope_change', 'external_party', 'data_availability', 'other'];
 export const OFFICIAL_CHANNELS = ['letter', 'email', 'phone', 'meeting', 'correspondence_system', 'other'];
@@ -106,6 +107,7 @@ export default function TaskDetail() {
                   ? <Link to={`/resolutions/${task.resolutionId}`}>{t(`enums.resolutionType.${task.resolutionType}`)} {task.resolutionNumber ?? ''} — {task.resolutionTitle}</Link>
                   : task.agendaItemId ? <span>{t('tasks4.source.agenda_item')}: {task.agendaItemTitle}</span> : t('tasks4.source.manual')}
                 {task.meetingId && <> · <Link to={`/meetings/${task.meetingId}`} className="mono">{task.meetingReference}</Link></>}
+                {!task.resolutionId && cap.canManage && <AiTaskLink taskId={task.id} />}
               </Descriptions.Item>
               <Descriptions.Item label={t('tasks4.required')} span={2}><Typography.Paragraph style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{task.description ?? task.titleAr}</Typography.Paragraph></Descriptions.Item>
               <Descriptions.Item label={t('tasks4.executor')}>{task.executorName ?? task.assigneeName} <Tag>{t(`enums.assigneeType.${task.assigneeType}`)}</Tag></Descriptions.Item>

@@ -12,6 +12,16 @@
 | `AI_TASK_EXTRACTION_ENABLED` | منطقي | AI_ENABLED | `ai.action_extraction` (المهام) | ai |
 | `AI_SMART_SEARCH_ENABLED` | منطقي | AI_ENABLED | `ai.assistant_qa` + `ai.semantic_index` | ai |
 | `AI_AUDIO_TRANSCRIPTION_ENABLED` | منطقي | AI_ENABLED | `ai.transcription` | ai |
+| `AI_PROVIDER` | قائمة: none, mock (تجريبي للاختبار فقط، ليس نموذجًا لغويًا، ممنوع في الإنتاج), openai_compatible | AI_ENABLED | — | ai |
+| `AI_PROVIDER_HOSTING` | قائمة: on_premises, external (سقف «مقيد» وحجب المعرّفات الشخصية) | AI_ENABLED | — | — |
+| `AI_MAX_CLASSIFICATION` | قائمة: none, public (الافتراضي), restricted, secret | AI_ENABLED | — | — |
+| `AI_BASE_URL` | نص (300) — مضيفه من `Ai:AllowedHosts` في بيئة الخادم وبـ https | AI_ENABLED | — | — |
+| `AI_MODEL` / `AI_TRANSCRIPTION_MODEL` | نص (100) — فارغ نموذج التفريغ = الخدمة غير متاحة | AI_ENABLED | — | — |
+| `AI_TIMEOUT_SECONDS` | عدد 5–300 (60) | AI_ENABLED | — | — |
+| `AI_DAILY_REQUESTS_PER_USER` | عدد 1–10000 (50) | AI_ENABLED | — | — |
+| `AI_MONTHLY_REQUEST_LIMIT` / `AI_MONTHLY_TOKEN_LIMIT` | عدد (3000 / 3,000,000) | AI_ENABLED | — | — |
+| `AI_USAGE_ALERT_PERCENT` | عدد 50–99 (80) | AI_ENABLED | — | — |
+| `AI_RETENTION_DAYS` | عدد 7–3650 (90) — للمسودات غير المحفوظة فقط | AI_ENABLED | — | — |
 | `E_SIGNATURE_ENABLED` | منطقي | — | `module.esignature` | esign |
 | `E_SIGNATURE_PROVIDER` | قائمة: none, mock (تجريبي للاختبار فقط، ممنوع في الإنتاج), national_provider (بعد التعاقد) | E_SIGNATURE_ENABLED | `esign.provider` | esign |
 | `E_SIGNATURE_METHOD` | قائمة: in_app_approval (الافتراضي), provider_esign, pdf_digital_signature — الأنواع الثلاثة في 21 §2 | E_SIGNATURE_ENABLED | — | esign |
@@ -29,6 +39,8 @@
 قواعد مطبقة ومختبرة في المرحلة 1: القيمة الفعلية = قيمة المفتاح ∧ المفتاح الأعلى، ويتقدم عليهما قفل البيئة `FeatureManagement:Locks:<KEY>`؛ حالة الإعداد مستقلة عن حالة اتصال المزوّد (`config.connector_status`)؛ كل محاولة تغيير تُسجَّل في `config.feature_flag_history` بالنتيجة (`succeeded`, `rejected_validation`, `confirmation_required`, `denied`, `failed`)؛ والتغيير المؤثر في عمليات جارية يتطلب `confirmImpact=true`. تجاوزات المفاتيح على مستوى الجهة (§2) مؤجلة إلى المرحلة 2.
 
 **تحديث وحدة التوقيع الإلكتروني (V011، 21 §3):** حُوّلت قيم القائمتين السابقتين (`sandbox` ← `mock`، و`otp_confirmation` ← `provider_esign`، وما عداها ← `in_app_approval`). مفاتيح `E_SIGNATURE_*` التسعة كلها تابعة لـ `E_SIGNATURE_ENABLED`، وتُقرأ لكل طلب جديد وتُحفظ لقطة منها في الطلب نفسه، فلا يغيّر تعديلها لاحقًا طلبًا جاريًا. تعطيل `E_SIGNATURE_ENABLED` وطلبات جارية يتطلب تأكيد الأثر، ولا يغيّر حالة أي طلب آليًا (21 §7). ومسارات التوقيع لكل جهة أو نوع اجتماع تُدار في جدول مستقل لا في المفاتيح.
+
+**تحديث وحدة الذكاء الاصطناعي (V012، 22 §3):** أُضيف نوعا إعداد «عدد صحيح» بحدود دنيا وعليا و«نص» بطول أقصى، يتحقق منهما الخادم ويُسجل تغييرهما كغيرهما. توزيع الوظائف العشر على المفاتيح الستة في 22 §2. مفتاح API ليس إعدادًا: يُخزن في مخزن الأسرار (22 §3.2). تعطيل `AI_ENABLED` أو أي وظيفة والطلبات جارية يتطلب تأكيد الأثر (22 §5).
 
 ## 1. الأهداف والضمانات
 

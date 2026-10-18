@@ -9,7 +9,7 @@ namespace Ccms.Modules.Configuration;
 
 internal sealed record FlagRow(string Key, string Category, string ValueType, string Value, string DefaultValue, string[]? AllowedValues,
     string? ParentKey, string? ConnectorCode, string NameAr, string NameEn, string DescriptionAr, string DescriptionEn, int SortOrder, DateTime UpdatedAt,
-    Guid? UpdatedBy, string? UpdatedByName);
+    Guid? UpdatedBy, string? UpdatedByName, long? MinValue = null, long? MaxValue = null, int? MaxLength = null);
 
 /// <summary>قراءة المفاتيح من القاعدة على الخادم دائمًا. القيمة الفعلية = قيمة المفتاح ∧ المفتاح الأعلى، مع أقفال البيئة إن وُجدت.
 /// الذاكرة المؤقتة قصيرة وتُبطل فور أي تغيير في هذه النسخة.</summary>
@@ -26,13 +26,14 @@ internal sealed class FeatureStore(IServiceScopeFactory scopes, IMemoryCache cac
             var db = scope.ServiceProvider.GetRequiredService<Db>();
             var rows = await db.QueryAsync("""
                 SELECT f.key, f.category, f.value_type, f.value, f.default_value, f.allowed_values, f.parent_key, f.connector_code,
-                       f.name_ar, f.name_en, f.description_ar, f.description_en, f.sort_order, f.updated_at, f.updated_by, u.display_name_ar AS updated_by_name
+                       f.name_ar, f.name_en, f.description_ar, f.description_en, f.sort_order, f.updated_at, f.updated_by, u.display_name_ar AS updated_by_name,
+                       f.min_value, f.max_value, f.max_length
                 FROM config.feature_flags f LEFT JOIN iam.users u ON u.id = f.updated_by
                 ORDER BY f.sort_order
                 """, null, r => new FlagRow(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4),
                 r.IsDBNull(5) ? null : r.GetFieldValue<string[]>(5), r.Str("parent_key"), r.Str("connector_code"),
                 r.GetString(8), r.GetString(9), r.GetString(10), r.GetString(11), r.GetInt32(12), r.GetFieldValue<DateTime>(13), r.Uuid("updated_by"),
-                r.Str("updated_by_name")), ct);
+                r.Str("updated_by_name"), r.IsDBNull(16) ? null : r.GetInt64(16), r.IsDBNull(17) ? null : r.GetInt64(17), r.IsDBNull(18) ? null : r.GetInt32(18)), ct);
             return (IReadOnlyDictionary<string, FlagRow>)rows.ToDictionary(x => x.Key);
         }))!;
 

@@ -313,13 +313,13 @@ public sealed class Suite(TestContext ctx)
 
     // ============================ الإعدادات المركزية ============================
 
-    [Test("CFG-01", "المفاتيح التسعة عشر محفوظة في القاعدة، بحالة إعداد وحالة اتصال منفصلتين", 40)]
+    [Test("CFG-01", "مفاتيح التفعيل التسعة عشر وإعدادات مزوّد الذكاء الاصطناعي محفوظة في القاعدة، بحالة إعداد وحالة اتصال منفصلتين", 40)]
     public async Task FlagsListed()
     {
         var flags = (await Admin.GetJsonAsync("/api/v1/admin/features")).AsArray();
         var keys = flags.Select(f => f.S("key")).ToHashSet();
         foreach (var k in TestContext.ExpectedFlags) Check.That(keys.Contains(k), "المفتاح موجود: " + k);
-        Check.Equal(19, keys.Count, "عدد المفاتيح");
+        Check.Equal(TestContext.ExpectedFlags.Length, keys.Count, "عدد المفاتيح");
         var ai = flags.First(f => f.S("key") == "AI_ENABLED");
         Check.That(ai["connector"]!["status"] is not null, "حالة الاتصال مستقلة");
         Check.That(ai["effectiveEnabled"] is not null, "حالة الإعداد مستقلة");

@@ -2,6 +2,7 @@ import { Avatar, Badge, Button, Dropdown, Layout, Menu, Space, Tag, Typography }
 import {
   AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, CheckSquareOutlined, FileTextOutlined,
   GlobalOutlined, IdcardOutlined, LogoutOutlined, SettingOutlined, TeamOutlined, UserOutlined, SolutionOutlined, ExportOutlined, SafetyCertificateOutlined, BranchesOutlined,
+  RobotOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -51,11 +52,13 @@ export default function AppLayout() {
       { key: '/minutes', icon: <FileTextOutlined />, label: <Link to="/minutes">{t('nav.minutes')}</Link> },
       { key: '/resolutions', icon: <SolutionOutlined />, label: <Link to="/resolutions">{t('nav.resolutions')}</Link> },
       ...(showReports ? [{ key: '/reports', icon: <BarChartOutlined />, label: <Link to="/reports">{t('nav.reports')}</Link> }] : []),
+      { key: '/search', icon: <SearchOutlined />, label: <Link to="/search">{t('nav.search')}</Link> },
       { key: '/signature-verify', icon: <SafetyCertificateOutlined />, label: <Link to="/signature-verify">{t('nav.signatureVerify')}</Link> },
     ] },
-    ...(can('admin.users.manage') || can('admin.settings.view') || can('esign.routes.manage') ? [{ type: 'group' as const, label: collapsed ? null : t('nav.administration'), children: [
+    ...(can('admin.users.manage') || can('admin.settings.view') || can('esign.routes.manage') || can('ai.logs.view') ? [{ type: 'group' as const, label: collapsed ? null : t('nav.administration'), children: [
       ...(can('admin.users.manage') ? [{ key: '/users', icon: <UserOutlined />, label: <Link to="/users">{t('nav.users')}</Link> }] : []),
       ...(can('admin.settings.view') ? [{ key: '/settings', icon: <SettingOutlined />, label: <Link to="/settings">{t('nav.settings')}</Link> }] : []),
+      ...(can('admin.settings.view') || can('ai.logs.view') ? [{ key: '/ai-admin', icon: <RobotOutlined />, label: <Link to="/ai-admin">{t('nav.aiAdmin')}</Link> }] : []),
       ...(can('esign.routes.manage') ? [{ key: '/signature-routes', icon: <BranchesOutlined />, label: <Link to="/signature-routes">{t('nav.signatureRoutes')}</Link> }] : []),
     ] }] : []),
   ];

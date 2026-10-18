@@ -16,19 +16,9 @@ namespace Ccms.Modules.Integrations;
 public sealed class IntegrationOptions
 {
     public const string Section = "Integrations";
-    public AiOptions Ai { get; set; } = new();
     public EmailOptions Email { get; set; } = new();
     public ESignOptions ESign { get; set; } = new();
     public CorrespondenceOptions Correspondence { get; set; } = new();
-}
-
-public sealed class AiOptions
-{
-    public string BaseUrl { get; set; } = "";
-    public string Model { get; set; } = "";
-    public string ApiKey { get; set; } = "";
-    /// <summary>لا يُرسل أي نص إلا إلى مضيف في هذه القائمة (10 §6)؛ تُقفل من بيئة الخادم في الإنتاج.</summary>
-    public string[] AllowedHosts { get; set; } = [];
 }
 
 public sealed class EmailOptions
@@ -63,7 +53,6 @@ public sealed class IntegrationsModule : IModule
     {
         services.Configure<IntegrationOptions>(configuration.GetSection(IntegrationOptions.Section));
         services.AddHttpClient("integrations", c => c.Timeout = TimeSpan.FromSeconds(10));
-        services.AddSingleton<IConnector, AiConnector>();
         services.AddScoped<IConnector, ESignConnector>();
         services.AddSingleton<IConnector, EmailConnector>();
         services.AddSingleton<IConnector, CorrespondenceConnector>();
@@ -73,36 +62,7 @@ public sealed class IntegrationsModule : IModule
 
     public void MapEndpoints(IEndpointRouteBuilder api)
     {
-        var ai = api.MapGroup("/ai").WithTags("AI (optional)");
-        ai.MapGet("/status", AiStatus);
-        ai.MapPost("/minutes/{id:guid}/summary", AiSummary);
-
         api.MapGet("/correspondence/status", CorrespondenceStatus).WithTags("Correspondence (optional)");
-    }
-
-    private static readonly string[] AiCapabilities =
-    [
-        FeatureKeys.AiMinutesSummary, FeatureKeys.AiDecisionExtraction, FeatureKeys.AiTaskExtraction,
-        FeatureKeys.AiSmartSearch, FeatureKeys.AiAudioTranscription,
-    ];
-
-    private static async Task<IResult> AiStatus(IFeatureService features, IConnectorStatusStore status, ICurrentUser me, CancellationToken ct)
-    {
-        if (!me.IsAuthenticated) throw new UnauthenticatedException();
-        await features.DemandEnabledAsync(FeatureKeys.AiEnabled, ct);
-        var caps = new Dictionary<string, bool>();
-        foreach (var k in AiCapabilities) caps[k] = await features.IsEnabledAsync(k, ct);
-        return Results.Ok(new { enabled = true, capabilities = caps, connection = (await status.GetAsync("ai", ct))?.StateCode ?? "not_configured" });
-    }
-
-    /// <summary>مثال للتحقق الطبقي على الخادم: الخاصية (404 إن كانت معطلة) ← الصلاحية ← المزوّد (503 إن لم يكن متاحًا).
-    /// تنفيذ التلخيص نفسه في المرحلة 7ب بعد توفر خادم النموذج.</summary>
-    private static async Task<IResult> AiSummary(Guid id, IFeatureService features, IAccessService access, IConnectorStatusStore status, CancellationToken ct)
-    {
-        await features.DemandEnabledAsync(FeatureKeys.AiMinutesSummary, ct);
-        await access.DemandAsync(Permissions.MinutesView, Scope.Record("minutes", id), ct);
-        await status.DemandAvailableAsync("ai", ct);
-        return Results.Problem(statusCode: 501, title: "قدرة التلخيص تُنفذ في المرحلة 7ب بعد توفر خادم النموذج", type: "/problems/capability-not-implemented");
     }
 
     private static async Task<IResult> CorrespondenceStatus(IFeatureService features, IConnectorStatusStore status, ICurrentUser me, CancellationToken ct)
@@ -131,23 +91,6 @@ internal static class Probe
         {
             return new ConnectorHealth(ConnectorState.Failing, e.Message, (int)sw.ElapsedMilliseconds);
         }
-    }
-}
-
-internal sealed class AiConnector(IOptions<IntegrationOptions> options, IHttpClientFactory http) : IConnector
-{
-    public string Code => "ai";
-    public string NameAr => "خادم النموذج اللغوي";
-    public string NameEn => "Language model server";
-
-    public Task<ConnectorHealth> CheckAsync(CancellationToken ct = default)
-    {
-        var o = options.Value.Ai;
-        if (o.BaseUrl.Length == 0 || o.Model.Length == 0)
-            return Task.FromResult(new ConnectorHealth(ConnectorState.NotConfigured, "لم يُحدد خادم النموذج ولا النموذج (Q-16)"));
-        if (!Uri.TryCreate(o.BaseUrl, UriKind.Absolute, out var uri) || !o.AllowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
-            return Task.FromResult(new ConnectorHealth(ConnectorState.Failing, "مضيف النموذج غير مدرج في القائمة المسموح بها (Integrations:Ai:AllowedHosts)"));
-        return Probe.HttpAsync(http, o.BaseUrl.TrimEnd('/') + "/models", o.ApiKey, ct);
     }
 }
 

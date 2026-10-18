@@ -50,7 +50,8 @@ public static class Permissions
         BodyLifecycle = "body.lifecycle.manage", BodyPolicy = "body.policy.manage", BodyDelegate = "body.delegate",
         MeetingAttendance = "meeting.attendance", MeetingInvite = "meeting.invite",
         MinutesComment = "minutes.comment", MinutesReviewSecretary = "minutes.review_secretary", MinutesTemplates = "minutes.templates.manage",
-        VoteCast = "vote.cast", VoteManage = "vote.manage", VoteViewIndividual = "vote.view_individual";
+        VoteCast = "vote.cast", VoteManage = "vote.manage", VoteViewIndividual = "vote.view_individual",
+        AiUse = "ai.use", AiLogsView = "ai.logs.view";
 }
 
 public enum ScopeType { System, Body, Task, Document, Record }
@@ -145,7 +146,11 @@ public static class FeatureKeys
         ESignatureSequential = "E_SIGNATURE_SEQUENTIAL", ESignaturePdfOutput = "E_SIGNATURE_PDF_OUTPUT",
         ESignatureReauthRequired = "E_SIGNATURE_REAUTH_REQUIRED", ExternalPortalEnabled = "EXTERNAL_PORTAL_ENABLED",
         EmailIntegrationEnabled = "EMAIL_INTEGRATION_ENABLED", CorrespondenceIntegrationEnabled = "CORRESPONDENCE_INTEGRATION_ENABLED",
-        SsoEnabled = "SSO_ENABLED";
+        SsoEnabled = "SSO_ENABLED",
+        AiProvider = "AI_PROVIDER", AiProviderHosting = "AI_PROVIDER_HOSTING", AiMaxClassification = "AI_MAX_CLASSIFICATION",
+        AiBaseUrl = "AI_BASE_URL", AiModel = "AI_MODEL", AiTranscriptionModel = "AI_TRANSCRIPTION_MODEL", AiTimeoutSeconds = "AI_TIMEOUT_SECONDS",
+        AiDailyRequestsPerUser = "AI_DAILY_REQUESTS_PER_USER", AiMonthlyRequestLimit = "AI_MONTHLY_REQUEST_LIMIT",
+        AiMonthlyTokenLimit = "AI_MONTHLY_TOKEN_LIMIT", AiUsageAlertPercent = "AI_USAGE_ALERT_PERCENT", AiRetentionDays = "AI_RETENTION_DAYS";
 }
 
 public interface IFeatureService

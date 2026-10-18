@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>وحدة الذكاء الاصطناعي المستقلة والاختيارية (ADR-021): واجهة مزوّد قابلة للتبديل، وسياسة تصنيف البيانات، وحدود الاستخدام، ومسودات قابلة للمراجعة البشرية بمراجع حقيقية فقط.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Ccms.Contracts/Ccms.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ccms.Tests" />
+  </ItemGroup>
+</Project>

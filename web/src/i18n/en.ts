@@ -4,6 +4,7 @@ import phase2En from './phase2.en';
 import phase3En from './phase3.en';
 import phase4En from './phase4.en';
 import phase6En from './phase6.en';
+import phase7En from './phase7.en';
 
 const en: Dictionary = {
   app: {
@@ -314,4 +315,4 @@ const en: Dictionary = {
   },
 };
 
-export default mergeDeep(mergeDeep(mergeDeep(mergeDeep(en, phase2En), phase3En), phase4En), phase6En);
+export default mergeDeep(mergeDeep(mergeDeep(mergeDeep(mergeDeep(en, phase2En), phase3En), phase4En), phase6En), phase7En);

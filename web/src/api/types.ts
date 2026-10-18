@@ -476,11 +476,14 @@ export interface Connector {
 export interface FeatureFlag {
   key: string;
   category: 'ai' | 'esignature' | 'integration' | 'platform';
-  valueType: 'boolean' | 'enum';
+  valueType: 'boolean' | 'enum' | 'integer' | 'text';
   value: string;
   storedValue: string;
   defaultValue: string;
   allowedValues?: string[] | null;
+  minValue?: number | null;
+  maxValue?: number | null;
+  maxLength?: number | null;
   parentKey?: string | null;
   effectiveEnabled: boolean;
   blockedBy?: string | null;
@@ -863,4 +866,61 @@ export interface ESignRoute {
   id: string; bodyId?: string | null; bodyName?: string | null; meetingType?: string | null; nameAr: string; nameEn?: string | null;
   steps: { order: number; role: string; allowDelegation: boolean }[]; sequential?: boolean | null; signatureType?: string | null; expiryDays: number;
   active: boolean; version: number; updatedBy?: string | null; updatedAt: string;
+}
+
+// ---------------- وحدة الذكاء الاصطناعي (ADR-021) ----------------
+export interface AiStatus {
+  enabled: boolean;
+  functions: Record<string, boolean>;
+  provider: { code: string; name?: string | null; nameEn?: string | null; testOnly: boolean; ready: boolean; reason: string; reasonText: string; transcriptionReady: boolean; transcriptionReason: string };
+  usage: { myToday: number; dailyLimit: number };
+  policy: { maxClassification: string; hosting: string };
+}
+export interface AiCitation { ref: string; type: string; id?: string | null; label: string; link?: string | null }
+export interface AiStatement { text: string; refs: string[] }
+export interface AiResult<C = Record<string, unknown>> {
+  outputId?: string | null; generated: true; draft: true; testOnly: boolean; provider: string; model: string;
+  content: C; citations: AiCitation[]; warnings: string[]; excludedSources?: number; redactions?: number; noSources?: boolean; extra?: Record<string, unknown> | null;
+}
+export interface AiOutput {
+  id: string; function: string; subjectType: string; subjectId?: string | null; bodyId?: string | null; requestedBy: string; requestedByName: string;
+  status: 'draft' | 'saved' | 'applied' | 'discarded' | 'expired' | 'held'; generated: true; testOnly: boolean; provider: string; model: string; promptVersion: string;
+  classification: string; sourceCount: number; heldReason?: string | null; reviewedBy?: string | null; reviewedAt?: string | null; reviewNote?: string | null;
+  purgedAt?: string | null; createdAt: string; content?: Record<string, unknown> | null; citations?: AiCitation[] | null; warnings: string[];
+  appliedRefs: { recordType: string; recordId: string; index?: number | null }[];
+  can: { save: boolean; discard: boolean; applied: boolean; release: boolean }; mine: boolean;
+}
+export interface AiJob {
+  id: string; status: 'queued' | 'running' | 'completed' | 'failed' | 'held' | 'cancelled'; attempts: number; lastError?: string | null; heldReason?: string | null;
+  outputId?: string | null; consent: { reference: string; note?: string; confirmedByName?: string; confirmedAt?: string }; createdAt: string; updatedAt: string;
+  fileName: string; documentId: string; requestedBy: string; closeReason?: string | null; can: { resume: boolean; cancel: boolean };
+}
+export interface AiFact { ref: string; kind: string; title: string; text: string; link?: string | null; type?: string | null; id?: string | null; label?: string | null }
+export interface SearchHitView {
+  type: string; id: string; title: string; reference?: string | null; bodyId: string; bodyName: string; status?: string | null; date?: string | null;
+  snippet: string; link: string; dueDate?: string | null; aiProcessable?: boolean; classification?: string;
+}
+export interface AiOverview {
+  settings: {
+    enabled: boolean; provider: string; providerName?: string | null; providerNameEn?: string | null; testOnly: boolean; hosting: string; configuredMaxClassification: string;
+    effectiveMaxClassification: string; baseUrl: string; model: string; transcriptionModel: string; timeoutSeconds: number; dailyPerUser: number;
+    monthlyRequests: number; monthlyTokens: number; alertPercent: number; retentionDays: number;
+  };
+  functions: { code: string; flag: string; enabled: boolean }[];
+  readiness: { ready: boolean; reason: string; text: string; transcriptionReady: boolean; transcriptionReason: string; transcriptionText: string };
+  connection?: { status: string; detail: string; latencyMs?: number | null } | null;
+  secret: { name: string; source: string; canStore: boolean; updatedAt?: string | null; updatedBy?: string | null; fingerprint?: string | null };
+  allowedHosts: string[];
+  usage: { period: string; todayRequests: number; monthRequests: number; monthTokens: number; requestsPct: number; tokensPct: number; alertPercent: number };
+  alerts: { metric: string; threshold: number; value: number; limit: number; at: string }[];
+  byFunction: { function: string; status: string; count: number; tokens: number; avgMs: number }[];
+  outputs: { held: number; kept: number; drafts: number };
+  jobs: { active: number; held: number; failed: number };
+  inflight: number;
+  mock?: { mode: string; delayMs: number; remaining: number } | null;
+}
+export interface AiRequestLog {
+  id: string; at: string; function: string; user?: string | null; status: string; errorCode?: string | null; durationMs?: number | null; inputTokens?: number | null;
+  outputTokens?: number | null; usageEstimated: boolean; provider?: string | null; model?: string | null; sources?: number | null; excluded: number; redactions: number;
+  classification?: string | null; counted: boolean; outputId?: string | null; subjectType?: string | null; body?: string | null;
 }
