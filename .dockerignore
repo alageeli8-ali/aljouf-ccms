@@ -1,0 +1,14 @@
+# سياق بناء الصورة: لا أسرار ولا مخرجات بناء محلية ولا بيانات
+.git
+.env
+.env.*
+!deploy/.env.example
+deploy/trial/.trial-credentials
+deploy/trial/.backup-pass
+deploy/certs
+storage
+**/bin
+**/obj
+**/node_modules
+src/backend/Ccms.Host/wwwroot
+docs/screenshots

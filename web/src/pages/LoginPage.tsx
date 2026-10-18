@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(params.get('error') ? t('login.ssoUnavailable') : null);
   const [busy, setBusy] = useState(false);
   const providers = useQuery({ queryKey: ['providers'], queryFn: () => get<Providers>('/api/v1/auth/providers') });
+  const info = useQuery({ queryKey: ['system-info'], queryFn: () => get<{ environment: string }>('/api/v1/system/info'), staleTime: Infinity });
 
   if (me) return <Navigate to={params.get('returnUrl') ?? '/'} replace />;
 
@@ -67,6 +68,7 @@ export default function LoginPage() {
             <Button type="text" icon={<GlobalOutlined />} onClick={switchLang}>{t('common.language')}</Button>
           </Space>
           <Typography.Paragraph type="secondary">{t('login.subtitle')}</Typography.Paragraph>
+          {info.data?.environment === 'Trial' && <Alert type="warning" showIcon message={t('common.trial')} description={t('common.trialNotice')} style={{ marginBottom: 16 }} />}
           {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
 
           {sso?.featureEnabled && (

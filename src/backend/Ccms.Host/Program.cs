@@ -209,11 +209,14 @@ internal static class Startup
     /// <summary>يرفض الإقلاع في الإنتاج بإعدادات ضعيفة (NFR-SEC-12).</summary>
     public static void EnforceProductionSafety(WebApplication app)
     {
-        if (!app.Environment.IsProduction()) return;
+        // بيئة التجربة (Trial) تُطبق ضوابط الإنتاج كلها عدا ثلاثة استثناءات لازمة للتجربة ببيانات وهمية (25 §11):
+        // الدخول المحلي لكل الحسابات (لا دخول موحد)، والمزوّدان التجريبيان للتوقيع والذكاء الاصطناعي، والبيانات التجريبية بكلمة مرور مولدة.
+        var trial = app.Environment.IsEnvironment(TrialEnvironment.Name);
+        if (!app.Environment.IsProduction() && !trial) return;
         var problems = new List<string>();
         var auth = app.Services.GetRequiredService<IOptions<AuthOptions>>().Value;
         if (DataSources.UsesOfflineShim) problems.Add("الإنتاج يتطلب مشغّل Npgsql: ابنِ بـ -p:UseNpgsql=true (ADR-015)");
-        if (auth.LocalLogin.Enabled && !auth.LocalLogin.BreakGlassOnly) problems.Add("الدخول المحلي في الإنتاج لحساب الطوارئ فقط (Authentication:LocalLogin:BreakGlassOnly=true)");
+        if (!trial && auth.LocalLogin.Enabled && !auth.LocalLogin.BreakGlassOnly) problems.Add("الدخول المحلي في الإنتاج لحساب الطوارئ فقط (Authentication:LocalLogin:BreakGlassOnly=true)");
         if (auth.Entra.AuthorityOverride.Length > 0) problems.Add("Authentication:Entra:AuthorityOverride مخصص للاختبار ولا يُقبل في الإنتاج");
         if (app.Configuration.GetValue("Database:ApplyMigrationsOnStartup", false)) problems.Add("الترحيلات في الإنتاج تُشغّل بأمر migrate بحساب المالك لا عند الإقلاع");
         var cs = app.Configuration.GetConnectionString("App") ?? "";
@@ -221,11 +224,13 @@ internal static class Startup
         if (string.IsNullOrWhiteSpace(app.Configuration["DataProtection:KeysPath"])) problems.Add("DataProtection:KeysPath مطلوب في الإنتاج (مفاتيح الكعكات ورموز الحماية خارج العملية ومحمية بصلاحيات الملفات)");
         if ((app.Configuration["AllowedHosts"] ?? "*") == "*") problems.Add("AllowedHosts يجب أن يحدد اسم النطاق الرسمي لا «*» (منع هجمات ترويسة Host)");
         if (app.Configuration["Secrets:MasterKey"] is { Length: > 0 } mk && !IsKey32(mk)) problems.Add("Secrets:MasterKey يجب أن يكون 32 بايت بترميز Base64");
-        if (!string.IsNullOrEmpty(app.Configuration["Signatures:MockCallbackSecret"])) problems.Add("Signatures:MockCallbackSecret خاص بالمزوّد التجريبي ولا يُضبط في الإنتاج");
+        if (!trial && !string.IsNullOrEmpty(app.Configuration["Signatures:MockCallbackSecret"])) problems.Add("Signatures:MockCallbackSecret خاص بالمزوّد التجريبي ولا يُضبط في الإنتاج");
+        if (trial && app.Configuration["Signatures:MockCallbackSecret"] is { Length: > 0 and < 32 }) problems.Add("Signatures:MockCallbackSecret في بيئة التجربة يجب أن يكون عشوائيًا بطول 32 حرفًا على الأقل");
         var storage = app.Configuration["Storage:Path"] ?? "";
         if (!Path.IsPathRooted(storage)) problems.Add("Storage:Path يجب أن يكون مسارًا مطلقًا خارج مجلد التطبيق في الإنتاج");
         if (problems.Count > 0)
             throw new InvalidOperationException("إعدادات إنتاج غير آمنة:\n - " + string.Join("\n - ", problems));
+        if (trial) app.Logger.LogWarning("بيئة تجربة: ضوابط الإنتاج مطبقة، والدخول المحلي والمزوّدان التجريبيان مسموحة — بيانات وهمية فقط");
     }
 
     private static bool IsKey32(string b64)
@@ -268,4 +273,10 @@ internal static class HealthProbe
             return 1;
         }
     }
+}
+
+/// <summary>اسم بيئة التجربة المؤسسية على استضافة مجانية ببيانات وهمية (25 §11).</summary>
+internal static class TrialEnvironment
+{
+    public const string Name = "Trial";
 }

@@ -30,10 +30,17 @@ internal static class Cli
                         return 0;
                     }
                 case "seed-sample":
-                    if (app.Environment.IsProduction()) throw new InvalidOperationException("البيانات التجريبية ممنوعة في الإنتاج");
-                    await SampleData.SeedAsync(app.Services.GetRequiredService<Db>());
-                    Console.WriteLine("تمت إضافة البيانات التجريبية");
-                    return 0;
+                    {
+                        if (app.Environment.IsProduction()) throw new InvalidOperationException("البيانات التجريبية ممنوعة في الإنتاج");
+                        // بيئة التجربة متاحة عبر الإنترنت: كلمة المرور المنشورة في المستودع ممنوعة، وتُمرر كلمة مولدة لهذه التجربة
+                        var password = Opt("--password");
+                        if (app.Environment.IsEnvironment(TrialEnvironment.Name)
+                            && (password is null || password.Length < 14 || password == SampleData.Password))
+                            throw new ArgumentException("بيئة التجربة تتطلب --password بكلمة مولدة لا تقل عن 14 حرفًا (غير الكلمة المنشورة)");
+                        var seeded = await SampleData.SeedAsync(app.Services.GetRequiredService<Db>(), password);
+                        Console.WriteLine(seeded ? "تمت إضافة البيانات التجريبية" : "البيانات التجريبية موجودة مسبقًا — لم يتغير شيء");
+                        return 0;
+                    }
                 default:
                     Console.Error.WriteLine($"أمر غير معروف: {args[0]} (migrate | bootstrap-admin | seed-sample)");
                     return 2;
@@ -81,11 +88,11 @@ internal static class SampleData
 {
     public const string Password = "Ccms@Sample2026";
 
-    public static async Task SeedAsync(Db db)
+    public static async Task<bool> SeedAsync(Db db, string? password = null)
     {
-        if (await db.ScalarAsync<long>("SELECT count(*) FROM bodies.bodies", null) > 0) return;
+        if (await db.ScalarAsync<long>("SELECT count(*) FROM bodies.bodies", null) > 0) return false;
         var hasher = new PasswordHasher<object>();
-        var hash = hasher.HashPassword(null!, Password);
+        var hash = hasher.HashPassword(null!, password ?? Password);
         await db.InTransactionAsync(async tx =>
         {
             async Task<Guid> User(string email, string nameAr, string nameEn, string? role = null, Guid? entity = null, Guid? unit = null)
@@ -199,5 +206,6 @@ internal static class SampleData
             }
             await tx.ExecuteAsync("INSERT INTO config.numbering_sequences (scope_key, year, last_value) VALUES ('task:DTC', @year, @n)", new { year, n });
         });
+        return true;
     }
 }

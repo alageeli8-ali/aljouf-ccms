@@ -70,6 +70,9 @@ const en: Dictionary = {
     total: 'Total',
     hijri: 'Hijri',
     environment: 'Environment',
+    trial: 'Trial environment — fictional data only',
+    trialShort: 'Trial',
+    trialNotice: 'This is a trial environment on free hosting outside Saudi Arabia: do not enter any real or classified data. Accounts and data are fictional, and the mock signature and AI providers produce no real signature or analysis.',
   },
   login: {
     title: 'Sign in',

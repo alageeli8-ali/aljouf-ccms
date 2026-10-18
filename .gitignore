@@ -15,3 +15,7 @@ src/backend/Ccms.Host/wwwroot/*
 TestResults/
 *.log
 deploy/certs/*.pem
+
+# بيئة التجربة (Codespaces): أسرار مولدة محليًا
+deploy/trial/.trial-credentials
+deploy/trial/.backup-pass

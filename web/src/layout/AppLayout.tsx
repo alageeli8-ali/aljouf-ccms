@@ -110,7 +110,9 @@ export default function AppLayout() {
           <div className="app-header-start">
             {phone && <Button type="text" icon={<MenuOutlined />} aria-label={t('nav.menu')} onClick={() => setDrawerOpen(true)} />}
             <Typography.Text strong className="app-header-title">{compact ? t('app.short') : t('app.name')}</Typography.Text>
-            {info.data && info.data.environment !== 'Production' && (
+            {info.data?.environment === 'Trial' ? (
+              <Tag color="red" style={{ marginInlineEnd: 0 }} title={t('common.trialNotice')}>{phone ? t('common.trialShort') : t('common.trial')}</Tag>
+            ) : info.data && info.data.environment !== 'Production' && (
               <Tag color="gold" style={{ marginInlineEnd: 0 }} title={`${t('common.environment')}: ${info.data.environment}`}>
                 {!phone && <>{t('common.environment')}: </>}<bdi>{info.data.environment}</bdi>
               </Tag>

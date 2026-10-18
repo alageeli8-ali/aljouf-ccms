@@ -1,0 +1,19 @@
+{
+  // بيئة التجربة على GitHub Codespaces (docs/25-operations-guide.md §11): تبني صورة الإنتاج وتشغّلها ببيانات وهمية.
+  "name": "CCMS — بيئة التجربة",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/dotnet:2": { "version": "10.0" }
+  },
+  "hostRequirements": { "cpus": 2, "memory": "8gb", "storage": "32gb" },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": { "label": "CCMS", "onAutoForward": "notify", "protocol": "http" }
+  },
+  "postCreateCommand": "bash deploy/trial/setup.sh",
+  "postStartCommand": "bash deploy/trial/start.sh",
+  "customizations": {
+    "codespaces": { "openFiles": ["deploy/trial/README.md"] }
+  }
+}

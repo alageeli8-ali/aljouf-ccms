@@ -1,0 +1,25 @@
+# تجاوز ملف النشر لبيئة التجربة على GitHub Codespaces (25 §11). يُستخدم مع الملف الأساسي:
+#   docker compose -f docker-compose.yml -f deploy/trial/docker-compose.trial.yml ...
+# الصورة نفسها (بمشغّل Npgsql) وضوابط الإنتاج نفسها؛ الفرق: بيئة Trial، والتطبيق مكشوف على 8080 لإعادة توجيه المنفذ في Codespaces
+# (التي توفر HTTPS)، ولا nginx. بيانات وهمية فقط.
+
+services:
+  migrate:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Trial
+
+  app:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Trial
+      # اسم Codespaces المعاد توجيهه، وlocalhost للفحص الداخلي
+      AllowedHosts: ${CCMS_HOSTNAME:?};localhost
+      Authentication__LocalLogin__Enabled: "true"
+      Authentication__LocalLogin__BreakGlassOnly: "false"
+      Signatures__MockCallbackSecret: ${CCMS_MOCK_CALLBACK_SECRET:?}
+      # كل الطلبات تصل من بوابة Docker نفسها، فيُرفع حد الدخول لكل عنوان حتى لا يتعطل عرض جماعي
+      RateLimits__LoginPerMinute: "60"
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  nginx:
+    profiles: [production-only]
